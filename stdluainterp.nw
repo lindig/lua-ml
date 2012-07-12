@@ -1,0 +1,1113 @@
+% -*- mode: Noweb; noweb-code-mode: caml-mode -*-
+
+% Grades     ::=    "%%Grades:" Quality Importance Urgency
+% Quality    ::=    A|B|C|D|E
+% Importance ::=    Central|Subsystem|Peripheral
+% Urgency    ::=    Immediate|Soon|Later
+%
+%%Grades: C Subsystem Soon
+
+\section{Core interpreter for Lua statements and expressions}
+
+This signature is intended as a convenient port of contact for an
+interpreter client.  
+Much of what's here is actually brought in from the [[Value]]
+submodule.
+The main things every external client will want are
+[[compile]], to compile Lua code, and [[state]], to get an initial
+state. 
+Other stuff, such as [[getglobal]], [[error]], etc., are primarily for
+use by libraries.
+<<signatures>>=
+module type S = sig
+  module Value : Luavalue.S
+  module Ast   : Luaast.S with module Value = Value
+  type state = Value.state
+  type value = Value.value
+  exception Error of string
+  type compiled = unit -> value list
+  val compile : srcdbg:(Srcmap.map * bool) -> Ast.chunk list -> state -> compiled
+  type startup_code = (string -> unit) -> unit
+  val pre_mk  : unit -> state * startup_code (* produce a fresh, initialized state *)
+  val error   : string -> 'a   (* error fallback *)
+
+  val getglobal : state -> value -> value
+    (* get the named global variable *)
+  val fallback  : string -> state -> value list -> value list
+    (* invoke named fallback on given state and arguments *)
+  val with_stack  : Value.srcloc -> state -> ('a -> 'b) -> 'a -> 'b
+    (* evaluates function with given srcloc on activation stack *)
+
+  val setfallback : state -> string -> value -> value
+    (* sets fallback, returns previous one *)
+  val register_globals :           (string * value) list -> state -> unit
+    (* registers values as named global variables *)
+  val register_module  : string -> (string * value) list -> state -> unit
+    (* register_module t l inserts members of l into global table t, 
+       creating t if needed *)
+end
+@ 
+To build an interpreter, one supplies module~[[T]], which gives the
+type of userdata, and module~[[L]], which gives a (combined) library.
+<<luainterp.mli>>=
+<<signatures>>
+module Make (T : Luavalue.USERDATA)
+            (L : Lualib.USERCODE with type 'a userdata' = 'a T.t) :
+    S with type 'a Value.userdata'  = 'a T.t
+@ 
+\subsection{Caveats}
+
+Builtin [[type]] doesn't return a tag.
+
+@ 
+\subsection{Implementation}
+Much of the implementation is strung together from elsewhere.
+Once we have a userdata type, we can make a value module.
+Then, once we know what a value is, we can make an AST (we need a
+value to represent the a literal node).
+The new stuff is embedded in module~[[I]].
+Owing to some careless management of the name space, this module forms
+both the interpreter core and also some of the top-level stuff.
+It shows up in both places because we need the interpreter core before
+we can build the library ([[L.M(Core)]]),
+and we need the library before we can build the [[state]] function,
+because the initialization has to include the initialization of the
+library. 
+<<luainterp.ml>>=
+exception Bogus
+<<signatures>>
+type answer = unit * string * bool
+module Make  (T : Luavalue.USERDATA)
+             (L : Lualib.USERCODE with type 'a userdata' = 'a T.t) :
+    S with type 'a Value.userdata'  = 'a T.t = struct
+  module Value = Luavalue.Make(T)
+  module Ast   = Luaast.Make (Value)
+  module I = struct
+    type state = Value.state
+    type value = Value.value
+    (* begin with internal abbreviations *)
+    module A = Ast
+    module V = Ast.Value
+    <<interp utility functions>>
+    <<interp [[with_stack]]>>
+    <<interp toplevel>>
+    type compiled = unit -> value list
+    <<compiler>>
+    <<interp fallbacks>>
+    <<interp registration>>
+    <<interp tests>>
+  end
+  module Core = struct
+    include I
+  end
+  module L' = L.M(Core)
+  include I
+  type startup_code = (string -> unit) -> unit
+  let pre_mk () = (* raw state + fallbacks + library initialization + startup code*)
+    let g = V.state() in
+    begin
+      add_fallbacks g;
+      L'.init g;
+      g, V.initcode g
+    end
+
+end (* Make *)
+@
+\subsubsection{Fallbacks}
+The error fallback is of primary interest because it's what we call
+when things go wrong. 
+The error fallback is \emph{always} supposed to raise an exception; if
+it does return a value something is horribly wrong.
+We get to the error fallback from Caml by calling the [[error]]
+function; if it doesn't raise an exception, we complain bitterly.
+<<interp toplevel>>=
+exception Errorfallback of V.value list
+let error s = raise (Errorfallback [V.String s])
+<<definition of [[catcherrorfallback]]>>=
+let catcherrorfallback g vs =
+  ignore (fallback "error" g vs);
+  raise (Error "Error fallback returned a value")
+@ 
+Here are the definitions of the builtin fallbacks.
+Most cause errors, except the index fallbacks, which return nil by
+default. 
+<<interp fallbacks>>=
+let errorfallback s g = fun args -> fallback "error" g [V.String s]
+let arithfallback g   = function
+  | [V.Number x; V.Number y; V.String s] when s = "pow" -> [V.Number (x ** y)]
+  | args -> errorfallback "unexpected type at conversion to number" g args
+let funcfallback g  = function 
+    | f::args   -> 
+        let args' = String.concat ", " (List.map V.to_string args) in 
+        let call  = Printf.sprintf "%s(%s)" (V.to_string f) args' in
+        fallback "error" g [V.String ("call expr is "^call)]
+    | args      -> fallback "error" g [V.String "call expr not a function"]
+      
+let fbs g =
+  [ "arith",     arithfallback g
+  ; "order",     errorfallback "unexpected type at comparison" g
+  ; "concat",    errorfallback "unexpected type at conversion to string" g
+  ; "index",     (fun args -> [V.Nil])
+  ; "getglobal", (fun args -> [V.Nil])
+  ; "gettable",  errorfallback "indexed expression not a table" g
+  ; "settable",  errorfallback "indexed expression not a table" g
+  ; "function",  funcfallback g
+  ; "error",     default_error_fallback g
+  ] 
+@ 
+Function [[add_fallbacks]] adds the default fallbacks to an
+interpreter.
+It's used above, at initialization time.
+<<interp fallbacks>>=
+let add_fallbacks g =
+  List.iter (fun (k, f) -> Hashtbl.add g.V.fallbacks k (V.caml_func f)) (fbs g)
+@ 
+A user can change a fallback by calling [[setfallback]], which updates
+the fallback and returns the old fallback, if any.
+<<interp fallbacks>>=
+let setfallback g fbname fb =
+  let fb' = try Hashtbl.find g.V.fallbacks fbname with Not_found -> V.Nil in
+  let _   = Hashtbl.replace g.V.fallbacks fbname fb in
+  fb'
+@ 
+The default error fallback expects one error message as argument.
+It prints the message and a stack trace, and then it raises the
+[[Error]] exception.
+<<interp toplevel>>=
+exception Error of string
+let default_error_fallback g args = 
+  let msg = match args with V.String s :: _ -> s | _ -> "??error w/o message??" in
+  prerr_string "lua: ";
+  prerr_endline msg;
+  prerr_endline "Stack trace:";
+  currentloc_tostack g;
+  List.iter (fun a -> prerr_string "  ";
+             List.iter prerr_string (V.activation_strings g a);
+             prerr_endline "") g.V.callstack;
+  raise (Error msg)
+@ 
+The [[fallback]] function invokes a fallback.
+It can't use the ordinary [[call]] because this could lead
+to an infinite loop. 
+
+If a fallback is a function, it is called.
+Otherwise, the [[function]] fallback is called.
+But if the [[function]] fallback is not a function, things are very
+badly wrong, and we call the \emph{default} (not the current) error
+fallback.
+(Using the default error fallback guarantees termination.)
+<<interp toplevel>>=
+<<state dumping>>
+let rec fallback fbname g args =
+  let call f g args = match f with
+  | V.Function (info, f) -> with_stack info g f args
+  | v when fbname <> "function" -> fallback "function" g (v :: args)
+  | v -> default_error_fallback g [V.String "`function' fallback not a function"] in
+  let fbval = try Hashtbl.find g.V.fallbacks fbname
+              with Not_found -> <<fallback failure>> in
+  call fbval g args
+<<definition of [[catcherrorfallback]]>>
+@ 
+It should never happen that we don't have a fallback.
+But it can happen if a client registers an impure function as pure.
+If registered as pure, the function promises not to access machine
+state.
+In fact, we give it an empty state, and if the function breaks its
+promise, it can't find any fallbacks, and it may trigger this message.
+<<fallback failure>>=
+begin
+  prerr_string "no fallback named `";
+  prerr_string fbname;
+  prerr_endline "' (probably registered an impure function as pure)";
+  dump_state g;
+  assert false (* can't have any unknown fallbacks *)
+end
+@ 
+\subsubsection{Function application}
+We're using the classic eval/apply model.
+Almost everybody uses the [[apply]] function, which if given a
+function, applies it.
+If [[apply]] is given anything else, it falls back to the ``function'' fallback.
+
+If the types don't match and the application raises [[Projection]], we
+have to do something. 
+This problem has no counterpart in the C~version, in which it's up to
+each individual C~routine to worry about type mismatches.
+\begin{quote}\it
+    I'm not sure that the [[Invalid_argument]] exception should be
+    caught here. It is hard to find the cause of the problem without a
+    stack trace. ---CL
+
+   It is unclear whether CL means he wants a Caml stack trace or a Lua
+   stack trace. ---NR
+\end{quote}
+Using [[with_stack]] here instead of in the definition of [[lambda]]
+ensures that we get a stack-trace entry even for Caml functions.
+\nwaddbox{apply : value -> state -> value list -> value list}
+\deeperbox{16pt}
+<<interp toplevel>>=
+let apply f g args = match f with
+  | V.Function (info, f) ->
+         ( try (with_stack info g f args) with
+         | V.Projection (v, what) -> <<projection error fallback>>
+         | Errorfallback vs -> catcherrorfallback g vs
+        (*** need the stack trace
+         | Invalid_argument msg -> <<argument error fallback>>
+         ***)
+         ) 
+  | v -> fallback "function" g (v :: args)
+(*unboxval*)
+
+let indent = ref 0
+let apply' f g args =
+  let str = proj_string g in
+  let ind = String.make (!indent) '-' in
+  Printf.eprintf
+    "%sApply %s(%s)\n" ind (str f) (String.concat ", " (List.map str args));
+  indent := !indent + 2;
+  let answer = try apply f g args with e -> indent := !indent - 2; raise e in
+  indent := !indent - 2;
+  Printf.eprintf "%sResults %s(%s) = \n\t%s\n" ind
+    (str f) (String.concat ", " (List.map str args))
+    (String.concat ", " (List.map str answer));
+  answer
+
+<<projection error fallback>>=
+fallback "error" g
+         [V.String ("cannot convert value " ^ proj_string g v ^ " to " ^ what)]
+<<argument error fallback>>=
+fallback "error" g [V.String ("Function raised Invalid_argument " ^ msg)]
+<<interp utility functions>>=
+let proj_string g v =
+  let what = match v with
+  | V.Table t ->
+      let l = try (V.list V.value).V.project v with _ -> [] in
+      let not_nil = function V.Nil -> false | _ -> true in
+      if Luahash.population t = List.length l && List.for_all not_nil l then
+        "{ " ^ String.concat ", " (List.map V.to_string l) ^ " }"
+      else
+        V.to_string v
+  | _ -> V.to_string v in
+  let spr = Printf.sprintf in
+  match V.objname g v with
+  | Some (V.Fallback n)     -> spr "%s (fallback %s)" what n
+  | Some (V.Global n)       -> spr "'%s %s'" what n
+  | Some (V.Element (s, v)) -> spr "'%s %s[%s]'" what s (V.to_string v)
+  | None -> what
+@      
+To use a fallback in a situation where we expect
+exactly one result, we adjust the results.
+\nwaddbox{fb1   : string -> state -> value list -> value}
+\deeperbox{16pt}
+<<interp toplevel>>=
+let fb1 name state args = match fallback name state args with
+  | [] -> V.Nil
+  | h :: t -> h
+(*unboxval*)
+@ 
+\subsubsection{Implementations of the infix operators}
+A binary arithmetic operator converts its arguments to floating-point
+numbers.
+If anything goes wrong, it calls the ``arith'' fallback.
+\nwaddbox{arith : string -> (float -> float -> float) -> value -> value -> state -> value}
+\deeperbox{14pt}
+<<interp toplevel>>=
+let arith opname op =
+  let opname = V.String opname in (* allocate early and share *)
+  let f x y g = try
+    let x = V.float.V.project x in
+    let y = V.float.V.project y in
+    V.float.V.embed (op x y)
+  with V.Projection (_, _) -> fb1 "arith" g [x; y; opname]
+  in f
+(*unboxval*)
+@ 
+Negation is similar except that it takes but one argument.
+<<interp toplevel>>=
+let negate x g = try
+  let x = V.float.V.project x in
+  V.float.V.embed (~-. x)
+  with V.Projection (_, _) -> fb1 "arith" g [x; V.Nil; V.String "umn"]
+@ 
+An ordering operation takes two forms: a numeric form and a string
+form.
+Its result is a Boolean.
+\nwaddbox{order : string -> fcmp -> scmp -> value -> value -> state -> value}
+\deeperbox{14pt}
+<<interp toplevel>>=
+type fcmp = float  -> float  -> bool
+type scmp = string -> string -> bool
+let order opname nop sop =
+  let opname = V.String opname in
+  let f x y g =
+    match x, y with
+    | V.Number x, V.Number y -> V.bool.V.embed (nop x y)
+    | _ -> try let x = V.string.V.project x in
+               let y = V.string.V.project y in
+               V.bool.V.embed (sop x y)
+           with V.Projection (_, _) -> fb1 "order" g [x; y; opname]
+  in f
+(*unboxval*)
+@ 
+Concatenation converts to string.
+<<interp toplevel>>=
+let concat x y g =
+  try let x = V.string.V.project x in
+      let y = V.string.V.project y in
+      V.string.V.embed (x ^ y)
+  with V.Projection (_, _) -> fb1 "concat" g [x; y]
+@ 
+\subsubsection{Compilation of infix syntax}
+The [[binop]] function takes abstract syntax and returns its
+denotation as a function.
+The [[unop]] function is similar.
+The short-circuit operators can't be handled this way.
+\nwaddbox{binop : A.op -> value -> value -> state -> value}
+\deeperbox{14pt}
+<<interp toplevel>>=
+let binop = function
+  | A.Plus   -> arith "add" (+.)
+  | A.Minus  -> arith "sub" (-.)
+  | A.Times  -> arith "mul" ( *. )
+  | A.Div    -> arith "div" ( /. )
+  | A.Pow    -> fun x y g -> fb1 "arith" g [x; y; V.String "pow"]
+  | A.Lt     -> order "lt" (<)  (<)
+  | A.Le     -> order "le" (<=) (<=)
+  | A.Gt     -> order "gt" (>)  (>)
+  | A.Ge     -> order "ge" (>=) (>=)
+  | A.Eq     -> fun x y g -> V.bool.V.embed (V.eq x y)
+  | A.Ne     -> fun x y g -> V.bool.V.embed (not (V.eq x y))
+  | A.And    -> assert false (* short circuit *)
+  | A.Or     -> assert false (* short circuit *)
+  | A.Concat -> concat
+  | A.Not    -> assert false (* unary *)
+
+let unop = function
+  | A.Minus  -> negate
+  | A.Not    -> fun v g -> (match v with V.Nil -> V.Number 1.0 | _ -> V.Nil)
+  | _        -> assert false (* all other operators are binary *)
+(*unboxval*)
+@ 
+\subsubsection{Implementation of table operations}
+Tables are as you would expect, with fallbacks as required.
+<<interp toplevel>>=
+let index g t key = match t with
+| V.Table t ->
+    (match V.Table.find t key with
+    | V.Nil -> fb1 "index" g [V.Table t; key]
+    | v -> v)
+| _ -> fb1 "gettable" g [t; key]
+
+let settable g t key v = match t with
+| V.Table t -> V.Table.bind t key v
+| _ -> ignore (fallback "settable" g [t; key; v])
+@ 
+\subsubsection{Access to globals}
+Global lookup is much like table lookup, but they use a different
+fallback.
+Setting a global requires no fallback.
+<<interp toplevel>>=
+let getglobal g k =
+  match V.Table.find g.V.globals k with
+  | V.Nil -> fb1 "getglobal" g [k]
+  | v -> v
+let setglobal g k v = V.Table.bind g.V.globals k v
+@ 
+\subsubsection{Access to locals and temporaries}
+Local variables and temporaries share a single array.
+Access is by integer index, not by name, through functions
+[[setlocal]] and [[getlocal]].  
+To get multiple arguments for a function call, we have [[getlocals]].
+<<interp toplevel>>=
+let setlocal locals n v = Array.set locals n v    (* could be made unsafe *)
+let getlocal locals n   = Array.get locals n 
+
+let rec getlocals locals n count =
+  if count = 0 then []
+  else getlocal locals n :: getlocals locals (n+1) (count-1)
+@ 
+\subsection{Compilation}
+Compilation uses continuation-passing style, and to support type
+constraints, we define the type of continuation.
+A standard continuation takes an array that holds locals and
+temporaries.
+An extended continuation, which is used only in the case that the
+number of values used is not known until runtime, also takes a list of
+``extra results'' (every result beyond the first).
+<<compiler ((std))>>=
+type a = A of a  (* used in place of type variable in type constraints *)
+type 'a cont  = V.value array -> 'a  (* for exp1 *)
+type 'a xcont = V.value list -> V.value array -> 'a  (* for exp, explist *)
+@ 
+\subsubsection{Compiling expressions}
+We use two different expression compilers:
+in a context where exactly one value is expected, we use [[exp1]];
+in a context where the number of values expected could vary, we use
+[[exp]].
+The terms [[exp]] and [[exp1]] are taken from the grammar for Lua.
+
+To avoid allocation, we let locals and temporaries share one array.
+The semantics of [[exp1]] are as follows:
+\begin{itemize}
+\item
+As early parameters, it takes a function [[localref]],
+expression~[[e]], environment
+[[rho]], continuation [[theta]], and index [[loc]] (the location in
+the locals into which to put the result).
+The application of [[exp1]] to these parameters constitutes ``compile time.''
+\item
+This function returns a new continuation: a dynamic function that maps
+local 
+state to answers, and as a side effect deposits the result of
+evaluating the expression in [[locals.(loc)]].
+The application of this nameless function to global and local state,
+which produces an answer, constitutes ``run time.''
+\item
+At compile time, the [[localref]] function is called
+with each [[loc]] used.
+This function allows us to discover the maximum location that will be
+used at run time.
+We use this information to allocate a ``locals'' array of exactly the
+right size.
+\end{itemize}
+It is critically important that when [[exp1]] calls itself recursively,
+the call not be hidden under a lambda.
+Otherwise, we could inadvertently delay compilation until run time,
+with possibly disastrous results (e.g., access of a nonexistent local).
+It helps to remember that every [[theta]] should be a compile-time value.
+@
+As an example, we see that for a variable, we do the name lookup at compile time.
+At run time, we do either a by-name lookup for a global or a simple
+array lookup for a local. 
+We ``finish'' by writing the result of the expression (in this case
+the value of the variable) into
+the location [[loc]] that is passed as a parameter.
+<<definitions of [[exp]], [[explist]], and friends>>=
+let append argv rest = match rest with [] -> argv | _ -> argv @ rest in
+        (* optimizes common case *)
+let rec exp1 localref =
+  let rec exp1 rho e loc theta = 
+    let finish v l = setlocal l loc v; theta l in
+    match e with
+    | A.Var x -> localref loc;
+                 (match rho x with
+                  | Global  -> fun l -> finish (getglobal g (V.String x)) l
+                  | Local n -> fun l -> finish (getlocal l n) l)
+@ 
+A literal is straightforward.
+An indexing expression compiles the table and index into two
+locations, then builds a new continuation [[theta]], which fetches
+from these locations, computes the indexing expression, and finishes.
+<<definitions of [[exp]], [[explist]], and friends>>=
+    | A.Lit v -> localref loc; fun l -> finish v l
+    | A.Index (tab, key) ->
+        let tabloc = loc in
+        let keyloc = loc + 1 in
+        let theta l = finish (index g (getlocal l tabloc) (getlocal l keyloc)) l in
+        exp1 rho tab tabloc (exp1 rho key keyloc theta) 
+@ 
+In a table literal, the keys are static, but the values are dynamic.
+Luckily, however, we can bind away each value as soon as it is
+produced, so we need only one temporary location for values.
+Internally we would like to  use a special [[theta]] that takes
+\emph{three} dynamic parameters: global, local, and table.
+But this would require polymorphic recursion.
+
+Local function [[listbind]] deals with the list-like part of the syntax,
+and [[bind]] deals with the record-like part of the syntax.
+Because lists always come first, we call [[listbind]] which then calls
+[[bind]] when it runs out of bindings.
+<<definitions of [[exp]], [[explist]], and friends>>=
+    | A.Table (lists, bindings) ->
+        localref loc;                     (* needed if table is empty *)
+        let tabloc = loc in
+        let vloc   = loc + 1 in
+        let tbl l = match getlocal l tabloc with V.Table t -> t | _ -> assert false in
+        let rec listbind n theta = function
+          | [] -> bind theta bindings
+          | h::t ->
+              let theta = listbind (n +. 1.0) theta t in
+              let theta = fun l -> V.Table.bind (tbl l) (V.Number n) (getlocal l vloc);
+                                   theta l
+              in  exp1 rho h vloc theta
+                (* PERHAPS FOR LAST ELEMENT IN LIST, SHOULD CAPTURE *ALL* RESULTS? *)
+        and bind theta = function
+          | [] -> theta
+          | (n, h) :: t ->
+              let theta = bind theta t in
+              let theta = fun l -> V.Table.bind (tbl l) (V.String n) (getlocal l vloc);
+                                   theta l
+              in  exp1 rho h vloc theta in
+        let size  = List.length bindings + List.length lists in
+        let theta = listbind 1.0 theta lists in
+        fun l ->
+          let t = V.Table.create size in
+          setlocal l tabloc (V.Table t);
+          theta l
+@ 
+The short-circuit binary operators require special trickery.
+We use the [[short_circuit]] function to combine true and false
+continuations. 
+The standard binary operators provide a good illustration of how the
+location technique works.  
+<<definitions of [[exp]], [[explist]], and friends>>=
+    | A.Binop (e1, op, e2) ->
+        let short_circuit theta_t theta_f = fun l ->
+          match getlocal l loc with
+          | V.Nil -> theta_f l
+          | _ ->     theta_t l in
+        ( match op with
+        | A.And -> exp1 rho e1 loc (short_circuit (exp1 rho e2 loc theta) theta)
+        | A.Or  -> exp1 rho e1 loc (short_circuit theta (exp1 rho e2 loc theta))
+        | _ ->
+            let loc1 = loc in
+            let loc2 = loc + 1 in
+            let op = binop op in
+            exp1 rho e1 loc1 (
+            exp1 rho e2 loc2 (
+            fun l -> finish (op (getlocal l loc1) (getlocal l loc2) g) l)))
+    | A.Unop (op, e) ->
+        let op = unop op in
+        exp1 rho e loc (fun l -> finish (op (getlocal l loc) g) l)
+@ 
+A call could be a function call or a method call.
+Because in the general case, a call can return multiple results, we
+delegate the compilation to [[exp]].
+Because \emph{this} call occurs in a single-result context, we pass
+[[exp]] a continuation that ignores any ``extra'' results.
+<<definitions of [[exp]], [[explist]], and friends>>=
+    | A.Call c -> exp localref rho e loc (fun _ -> theta)
+in  exp1
+@ 
+When we compile an expression in a full, multi-result context, we
+[[finish]] with a \emph{list} of expressions.
+The first expression is written to [[loc]]; any remaining expressions
+are passed to [[theta]] before the local state.
+
+The only expression that can actually produce multiple results is a
+call.
+Any other expression is compiled by [[exp1]].
+The details are
+delegated to function [[call]], which is shared with the compiler for
+statements. 
+<<definitions of [[exp]], [[explist]], and friends>>=
+and exp localref rho e loc theta = 
+  let finish  vs l = match vs with
+  | v :: vs -> setlocal l loc v; theta vs l
+  | []      -> setlocal l loc V.Nil; theta [] l in
+  match e with
+  | A.Call c -> localref loc; call localref c rho loc finish
+  | _ -> exp1 localref rho e loc (theta [])
+@ 
+Function [[explist]] compiles code to evaluate a list of expressions,
+each linked to the next by its continuation [[theta]].
+The last expression is compiled in a multi-result context.
+Function [[explist]] tracks the desired location of each result. 
+<<definitions of [[exp]], [[explist]], and friends>>=
+and explist localref rho es loc theta = match es with
+| [] -> theta []
+| [e] -> exp localref rho e loc theta
+| e :: es -> exp1 localref rho e loc (explist localref rho es (loc+1) theta) 
+@ 
+For a call we compile the function and its arguments, creating a
+continuation that pulls [[fv]] (the function value) and [[argv]] (the
+list of arguments) out of the locals, then uses [[apply]] to apply the
+function. 
+The [[theta]] passed in is a somewhat different one from the expression
+[[theta]]; before taking the state, it takes the list of \emph{all}
+values returned. 
+<<definitions of [[exp]], [[explist]], and friends>>=
+and call localref c rho loc theta = match c with
+| A.Funcall (f, args) ->
+    let argcount = List.length args in
+    let argloc = loc + 1 in
+    exp1 localref rho f loc (
+    explist localref rho args argloc
+      (fun vs l ->
+        let fv   = getlocal l loc in
+        let argv = getlocals l argloc argcount in
+        theta (apply fv g (append argv vs)) l))
+@ 
+Because of the semantics of method call, we use more locations, and
+the code is more elaborate, but the ideas are the same.
+<<definitions of [[exp]], [[explist]], and friends>>=
+| A.Methcall (obj, meth, args) ->
+    let mloc     = loc in
+    let selfloc  = mloc + 1 in
+    let argloc   = selfloc + 1 in
+    let argcount = List.length args + 1 in
+    let meth     = V.String meth in
+    exp1 localref rho obj selfloc (
+      let theta_m = explist localref rho args argloc
+          (fun vs l ->
+            let fv = getlocal l loc in
+            let argv = getlocals l selfloc argcount in
+            theta (apply fv g (append argv vs)) l) in
+      fun l -> setlocal l mloc (index g (getlocal l selfloc) meth); theta_m l)
+@ 
+\subsubsection{Compiling statements}
+
+One oddity of Lua is that a statement can declare new local variables.
+At compile time, we keep a list of all local variables that have been
+declared.
+This list forms an environment that enables us to map a local-variable
+name to its index (by the [[lookup]] function).
+The function [[extend]] accepts a statement and uses it to extend the
+environment. 
+<<interp toplevel>>=
+let rec extend rho = function
+  | A.Stmt' (_, s) -> extend rho s
+  | A.Local (vs, _) -> List.rev_append vs rho
+  | _ -> rho
+@ 
+Here's where we compile an entire block.
+The function [[block_compiler]] is a sort of pre-compiler; it strings things together. 
+It returns two functions:
+[[bcomp]] can be used to compile a block, and afterward, 
+[[local_size]] can be used to find out how many locals are used in the
+block.
+\nwaddbox{exp1    : (int -> unit) -> (string -> var) -> A.exp      -> int -> a  cont -> a cont}
+\nwaddbox{exp     : (int -> unit) -> (string -> var) -> A.exp      -> int -> a xcont -> a cont}
+\nwaddbox{explist : (int -> unit) -> (string -> var) -> A.exp list -> int -> a xcont -> a cont}
+\nwaddbox{block   : string list -> A.block -> 'a cont -> (value list -> 'a) -> 'a cont}
+\deeperbox{48pt}
+<<compiler ((std))>>=
+<<old debugging code>>
+let block_compiler srcmap g = 
+  <<definitions of [[exp]], [[explist]], and friends>> in
+  let high_local_limit = ref 0 in
+  let localref n = if n >= !high_local_limit then high_local_limit := n+1 in
+  let local_size () = !high_local_limit in
+  let bcomp ~debug =
+      <<definitions of [[block]], [[stmt]], and friends>> in
+(*inboxval*)
+      block
+  in  bcomp, local_size
+@ 
+When compiling a statement, we provide two continuations: 
+a standard continuation [[theta]]
+and 
+a return continuation [[ret]].
+Both are compile-time values (static parameters).
+This setup approximates
+direct threaded code.  
+The type of [[theta]] is locals to answer, and the type of [[ret]] is
+value list to answer.
+@
+When we get a source-code marker, we might have to update the current
+location in the machine state.
+We pay the overhead only if debugging is turned on, which decision is
+made at \emph{compile} time.
+An earlier version of this code had a mistake in which the debugging
+call to [[stmt]] was hidden under a lambda.
+We avoid that problem here by defining new \emph{static} continuations
+that use the \emph{dynamic} contents of the ref call [[restore]].
+<<definitions of [[block]], [[stmt]], and friends>>=
+let rec stmt rho s (theta: 'a cont)  (ret:value list -> 'a) = match s with
+  | A.Stmt' (charpos, s) ->
+      if debug then
+        (* might make interesting example for paper *)
+        let where = Srcmap.location srcmap charpos in
+        let restore = ref (fun () -> ()) in  (* will restore currentloc *)
+        let theta' l = (!restore(); theta l) in
+        let ret' ans = (!restore(); ret ans) in
+        let stheta = stmt rho s theta' ret' in
+        fun l -> let n = g.V.currentloc in
+                 ( restore := (fun () -> g.V.currentloc <- n)
+                 ; g.V.currentloc <- Some where
+                 ; stheta l
+                 ) 
+            (* hard to maintain current line if exn raised ... *)
+      else
+        stmt rho s theta ret
+@ 
+A little ref-cell jujitsu is needed to make
+loops work.
+Again, we give the body a \emph{static} continuation which uses the
+\emph{dynamic} contents of a ref cell.
+Here we actually update the ref cell immediately after the
+compilation, closing the recursive loop.
+<<definitions of [[block]], [[stmt]], and friends>>=
+  | A.WhileDo (cond, body) ->
+      let loop_cont = ref theta in  (* to become loop continuation *)
+      let goto_head l = !loop_cont l in
+      let condloc = List.length rho in
+      let body = block rho body goto_head ret in
+      let loop =
+        exp1 localref (lookup rho) cond condloc
+          (fun l -> if notnil (getlocal l condloc) then body l else theta l) in
+      let _ = loop_cont := loop in
+      loop
+  | A.RepeatUntil (body, cond) ->
+      let loop_test = ref theta in (* to become loop-end continuation *)
+      let goto_test l = !loop_test l in
+      let condloc = List.length rho in
+      let body = block rho body goto_test ret in
+      let loop =
+        exp1 localref (lookup rho) cond condloc
+          (fun l -> if notnil (getlocal l condloc) then theta l else body l) in
+      let _ = loop_test := loop in
+      body
+@ 
+The only complication with the conditional is the complication built
+into the abstract syntax.
+<<definitions of [[block]], [[stmt]], and friends>>=
+  | A.If (c, t, alts, f) ->
+      let alts = (c, t) :: alts in
+      let f = block rho (match f with None -> [] | Some ss -> ss) theta ret in
+      let condloc = List.length rho in
+      let add (cond, body) f =
+        let body = block rho body theta ret in
+        exp1 localref (lookup rho) cond condloc (
+          fun l -> if notnil (getlocal l condloc) then body l else f l) in
+      List.fold_right add alts f
+@ 
+Returning compiles a list of expressions, supplying a static
+continuation that grabs the results from the local-variable array and
+passes them to the static return continuation.
+<<definitions of [[block]], [[stmt]], and friends>>=
+  | A.Return es ->
+      let loc = List.length rho in
+      let result_count = List.length es in 
+      explist localref (lookup rho) es loc 
+      (fun vs l -> ret (append (getlocals l loc result_count) vs))
+@ 
+A [[local]] declaration has the same dynamic effect as an assignment,
+which must be compiled in an extended compile-time environment.
+<<definitions of [[block]], [[stmt]], and friends>>=
+  | A.Local (vs, es) ->
+      stmt (List.rev_append vs rho) (A.Assign (List.map (fun x -> A.Lvar x) vs, es))
+      theta ret
+@ 
+Assignments are quite tricky because of the multiple-return-value
+semantics of Lua calls.
+This stuff probably needs better documentation.
+<<definitions of [[block]], [[stmt]], and friends>>=
+  | A.Assign (vs, es) ->
+      let rhscount = List.length es in
+      lvars localref (lookup rho) (List.length rho) vs (fun setlvs loc ->
+        explist localref (lookup rho) es loc (fun vs l ->
+          setlvs l (append (getlocals l loc rhscount) vs);
+          theta l))
+  | A.Callstmt c ->
+      call localref c (lookup rho) (List.length rho) (fun _ l -> theta l)
+@ 
+The [[block]] function compiles statements in sequence.
+It manages both the linking of continuations and the extension of the
+environment after each statement~[[s]], since an~[[s]] could contain a
+[[local]] declaration.
+<<definitions of [[block]], [[stmt]], and friends>>=
+and block rho body (theta:'a cont) (ret:V.value list -> 'a) = match body with
+  | [] -> theta
+  | s :: ss -> stmt rho s (block (extend rho s) ss theta ret) ret
+@ 
+\subsubsection{Compiling assignments}
+How are we to deal with assigment?
+One problem is that the number of right-hand sides cannot always be
+bound statically.  But since the number of \emph{left} hand sides is
+bound statically, maybe we can pull a bit of a cheat there.
+
+So here's the idea: pass a continuation builder for putting all the right-hand
+sides in place, then continue with them.
+
+What's the control flow like?
+Well, first we evaluate the lvalue, which may mean using some temps
+and then pulling them immediately. 
+Then we do the next lvalue and so on.
+Then the next step is the rvalues, and for each rvalue, we must have
+some sort of dynamic thingummy built up.
+When I get this figured out, it should go in the paper!
+
+Argument [[nextlvar]] passed to [[lvar]]
+takes a setter for the current lvar and also the
+index of the next free location in the temporary space.
+The setter takes global and local state, plus a value, and it is
+executed only for side effect.
+Argument [[finish]] passed to [[lvars]] is similar, except its setter
+takes a list of values. 
+<<definitions of [[block]], [[stmt]], and friends>>=
+and lvar localref rho lv lhsloc nextlvar = 
+  match lv with
+  | A.Lvar x -> 
+      let setx = match rho x with
+      | Global  -> fun l v -> setglobal g (V.String x) v
+      | Local n -> fun l v -> setlocal l n v in
+      nextlvar setx lhsloc
+  | A.Lindex (t, key) ->
+      let keyloc = lhsloc + 1 in
+      let setidx = exp1 localref rho t lhsloc (exp1 localref rho key keyloc (fun l ->
+            let t   = getlocal l lhsloc in
+            let key = getlocal l keyloc in
+            (fun v -> settable g t key v))) in
+      nextlvar setidx (lhsloc+2)
+<<definitions of [[block]], [[stmt]], and friends>>=
+and lvars localref rho loc lvs finish = match lvs with
+  | [] -> finish (fun l vs -> ()) loc
+  | h :: t ->
+      lvar localref rho h loc (fun setter loc ->
+        lvars localref rho loc t (fun setlvs loc ->
+          let setlvs l vs =
+            let v, vs = match vs with h::t -> h, t | [] -> V.Nil, [] in
+            setter l v;
+            setlvs l vs in
+          finish setlvs loc))
+@ 
+\subsubsection{Compiling chunks and functions}
+Chunks are executed by compiling functions.
+
+Executing a function requires pushing that function's information on
+the machine's call stack.
+The [[with_stack]] function handles the stack: it pushes new info, and
+it pops on both normal and exceptional termination.
+Too bad Caml doesn't have try-finally.
+<<interp [[with_stack]]>>=
+let indent = ref 0
+let with_stack info g f x =
+  let _ = currentloc_tostack g in
+  let _ = g.V.callstack <- (info, None) :: g.V.callstack in
+  let _ = currentloc_fromstack g in
+(*
+let _ = (prerr_string (String.make (!indent) ' ');
+         prerr_string "=> ";
+             List.iter prerr_string (V.activation_strings g (info, None));
+             prerr_endline "") in
+*)
+  let pop () = g.V.callstack <- List.tl g.V.callstack; currentloc_fromstack g
+(*
+; indent := !indent - 1; prerr_string (String.make (!indent) ' ')
+; prerr_string "[]\n"
+*)
+  in
+(*let _ = indent := !indent + 1 in*)
+  let answer = try f x with e -> (pop(); raise e) in
+  let _ = pop() in
+  answer
+@ 
+Here's the compilation of a function.
+We compile the body with continuations that produce the list of
+results of the function.  
+Falling off produces the empty list, and returning [[results]]
+produces those results.
+
+We return a dynamic function suitable for use as a Lua function value.
+It takes state and arguments, allocates an array for locals and
+temporaries,\footnote
+{We don't allocate space for unused locals, but we do allocate space
+  for formals, even if formals are not used.  The reason is we hope
+  they're used in the common case, and we'd rather not add the
+  additional check to every formal parameter.}
+initializes the array with the values of the actual parameters,
+then applies body continuation to the state to get the answer.
+We don't have to maintain the stack because that is done in function
+application above.
+\nwaddbox{lambda : Srcmap.map * bool -> Srcmap.location -> string list -> bool -> A.block -> state -> V.srcloc * V.func}
+\deeperbox{14pt}
+<<compiler ((std))>>=
+let value_list = V.list V.value
+let lambda (src, debug) (file, line, col) args varargs body state =
+  let rho = let args' = List.rev args in if varargs then "arg" :: args' else args' in
+  let block, count = block_compiler src state in
+  let body = block ~debug rho body (fun l -> []) (fun results -> results) in
+  let n = max (count()) (List.length rho) in
+  let srcloc = V.srcloc file line in
+  srcloc, 
+  fun argv ->
+    let locals = Array.make n V.Nil in
+    let rec walk n formals actuals = match formals with
+      | [] -> if varargs then Array.set locals n (value_list.V.embed actuals)
+      | f :: fs ->
+          let a, a's = match actuals with [] -> V.Nil, [] | h :: t -> h, t in
+          (Array.set locals n a; walk (n+1) fs a's)  in
+    let _ = walk 0 args argv in
+    body locals
+(*unboxval*)
+@ 
+Chunk compilation is not too exciting.
+We have a statement or a function.
+<<compiler ((std))>>=
+let func (info, f) = V.Function (info, f)
+let chunk ((smap, dbg) as srcdbg) block rho g = function
+  | A.Debug _ -> assert false (* must never get here *)
+  | A.Statement s -> block rho [s]
+  | A.Fundef (pos, f, args, varargs, body) ->
+      let v = func (lambda srcdbg (Srcmap.location smap pos) args varargs body g) in
+      block rho [A.Stmt'(pos, A.Assign ([f], [A.Lit v]))]
+  | A.Methdef (pos, obj, meth, args, varargs, body) ->
+      let args = "self" :: args in
+      let v = func (lambda srcdbg (Srcmap.location smap pos) args varargs body g) in
+      block rho [A.Stmt'(pos, A.Assign ([A.Lindex (obj, A.Lit (V.String meth))],
+                                        [A.Lit v]))]
+@ 
+Compiling a list of chunks is a lot like compiling a function, except
+we also have to keep track of whether debugging is turned on.
+<<compiler ((std))>>=
+let extendchunk rho = function
+  | A.Statement s -> extend rho s
+  | _ -> rho
+
+let compile ~srcdbg cs g = 
+  let block, count = block_compiler (fst srcdbg) g in
+  let ret = fun results -> results in
+  let rec chunks ((smap, debug) as srcdbg) rho = function
+    | [] -> fun l -> []
+    | A.Debug dbg :: t -> chunks (smap, dbg) rho t
+    | h :: t -> chunk srcdbg (block ~debug) rho g h
+                (chunks srcdbg (extendchunk rho h) t) ret in
+  let theta = chunks srcdbg [] cs in
+  let locals = Array.make (count()) V.Nil in
+  fun () -> theta locals
+@ 
+\subsection{Some very simple tests}
+These tests are probably just about worthless now, but early
+in the game they were quite a help.
+<<interp tests>>=  
+let nil = A.Lit V.Nil
+let three = A.Lit (V.Number 3.0)
+
+let ret = A.Return ([nil; three])
+
+let test_state = V.state ()
+
+let bogusmap = Srcmap.mk ()
+let stmts l = compile ~srcdbg:(bogusmap, false) (List.map (fun s -> A.Statement s) l)
+
+let num n = A.Lit (V.Number (float n))
+let rtest = stmts [ret]
+let sum = stmts [A.Return ([A.Binop (three, A.Plus, three)])]
+let exp = stmts [A.Return ([A.Binop (three, A.Times, A.Binop (num 2, A.Minus, three))])]
+let x = A.Var "x"
+let gets x e = A.Assign ([A.Lvar x], [e])
+let binary op e1 e2 = A.Binop (e1, op, e2)
+let lt = binary A.Lt
+let times = binary A.Times
+let loop = [ gets "x" (num 10)
+               ; A.WhileDo (lt x (num 100), [gets "x" (times (num 2) x)])
+               ; A.Return [x]]
+
+let test _ =
+  [ "return nil and three", rtest test_state
+  ; "sum of three and three", sum test_state
+  ; "expression minus three", exp test_state
+  ; "result of loop", stmts loop test_state
+  ] 
+@
+\subsubsection{Client registration functions}
+<<interp registration>>=
+let register_global g k v =
+  match getglobal g k with
+  | V.Nil -> setglobal g k v
+  | _ -> Printf.kprintf failwith "Global variable '%s' is already set" (V.to_string k)
+
+let register_globals l g = List.iter (fun (k, v) -> register_global g (V.String k) v) l
+
+let register_module tabname members g =
+  let t = getglobal g (V.String tabname) in
+  let t = match t with
+  | V.Nil       -> V.Table.create (List.length members)
+  | V.Table t   -> t
+  | _           -> catcherrorfallback g
+                   [V.String ("Global value " ^ tabname ^ " is not (table or nil)")] in
+  let _ = register_global g (V.String tabname) (V.Table t) in
+  let bind (k, v) = match V.Table.find t (V.String k) with
+  | V.Nil -> V.Table.bind t (V.String k) v
+  | _ ->
+      Printf.kprintf failwith "Duplicate '%s' registered in module '%s'" k tabname in
+  List.iter bind members
+@ 
+\subsubsection{Utility functions}
+
+\paragraph{Managing the current location}
+The state of the interpreter includes a stack of locations, but the
+current location is not stored on the top of the stack but in the
+special field [[currentloc]].
+This representation is supposed to improve performance (though it has
+never been measured).
+Functions [[currentloc_tostack]] and [[currentloc_fromstack]] both leave the
+cache consistent with the stack, in both cases by making the eponymous
+assignment. 
+<<interp utility functions>>=
+let currentloc_tostack g =
+  match g.V.callstack with
+  | (info, _) :: t -> g.V.callstack <- (info, g.V.currentloc) :: t
+  | [] -> ()
+
+let currentloc_fromstack g =
+  match g.V.callstack with
+  | (info, where) :: _ -> g.V.currentloc <- where
+  | [] -> ()
+
+@ 
+\paragraph{Access to variables}
+A variable is global or local.
+A local variable is known by its index.
+The mapping from name to [[var]] is done at compile time;
+global and local lookups are done at
+<<interp utility functions>>=
+type var = Global | Local of int
+let lookup rho x =
+  let rec look = function
+    | [] -> Global
+    | h :: t when h = x -> Local (List.length t)
+    | h :: t -> look t
+  in look rho
+
+
+@ 
+\paragraph{Miscellany}
+<<interp utility functions>>=
+let notnil = function
+  | V.Nil -> false
+  | _ -> true
+@
+
+\paragraph{Debugging support}
+<<state dumping>>=
+let dump_state g = 
+  let err = prerr_string in
+  let rec value = function
+    | V.Table t -> tab t ""
+    | v -> err (V.to_string v)
+  and tab t sfx =
+    err "{"; Luahash.iter (fun k d -> err " "; value k; err "="; value d; err ",") t;
+    err "}"; err sfx in
+  let stab t sfx =
+    err "{"; Hashtbl.iter (fun k d -> err " "; err k; err "="; value d; err ",") t;
+    err "}"; err sfx in
+  err "state is: \n";
+  err "  globals =\n    ";
+  tab g.V.globals "\n";
+  err "  fallbacks =\n    ";
+  stab g.V.fallbacks "\n";
+  default_error_fallback g [V.String "Stack trace is:"]
+
+@
+
+<<old debugging code>>=
+let wrap f x = let l = f x in (prerr_string "function returned ";
+                               prerr_int (List.length l);
+                               prerr_endline " values";
+                               l)
+
+let expname = function
+  | A.Var v -> v
+  | _ -> "?"
+let funname = function
+  | A.Lvar v -> v
+  | A.Lindex (e, A.Lit (V.String s)) -> expname e ^ "." ^ s
+  | A.Lindex (e, e') -> expname e ^ "[" ^ expname e' ^ "]"
+
+(*
+let (_ : (string -> var) -> A.exp -> int -> 'a cont -> 'a cont) = exp' (fun _ -> ()) 
+
+let (pexp : (string -> var) -> A.exp -> int -> answer cont -> answer cont) = exp' (fun _ -> ())
+*)
+(*
+let show_locals rho = 
+  prerr_string "=============\n";
+  List.iter (fun x ->
+    List.iter prerr_string ([x; " is "] @
+                            match lookup rho x with
+                            | Local n -> [" local variable "; string_of_int n; "\n"]
+                            | Global -> ["global\n"])) rho;
+  prerr_endline ""
+*)

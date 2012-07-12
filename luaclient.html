@@ -1,0 +1,459 @@
+<!-- this file was generated automatically by noweave; better not edit it-->
+
+<!-- Macros we use over and over again.-->
+
+
+VFP
+
+
+
+<p>
+
+
+
+<p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%-->
+
+<!-- support for noweb boxes-->
+
+<!-- nwboxes - - - support for boxed types in ML codes-->
+
+<!--% \ProvidesPackage{nwboxes}-->
+
+<p>
+
+
+
+
+
+
+
+<p>
+
+
+
+
+
+
+
+<p>
+<!--% original - -  boxes to left of markup-->
+
+
+
+
+
+<p>
+<!--% new: boxes below markup-->
+
+
+<!--\showthe\@nwdeeperboxspace-->
+<p>
+
+<!--       end support for noweb boxes-->
+
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%-->
+<!-- -*- mode: Noweb; noweb-code-mode: caml-mode -*--->
+
+
+
+
+
+<p>
+
+
+
+<p>
+<h1>A Sample Client for Lua-ML</h1>
+<address>Christian Lindig <br><tt>lindig@eecs.harvard.edu</tt></address>
+<p>
+<!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  -->
+
+<!--title goes here--><!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  -->
+
+This document demonstrates how to extend and embed a Lua interpreter
+into an OCaml application. We regard this document as a
+complement to the more detailed documents <code>lua.nw</code> and <code>newlib.nw</code>
+that document the general case while we focus on the simpler common
+case.
+<p>
+<h2>Prerequisites</h2>
+<p>
+The Lua interpreter comes as a library <code>lua-std.cma</code> and many
+<a name="NWD0-1">interface files </a><code>lua*.cmi</code>. All must be found by the OCaml
+compiler; the compiler can be directed to the library using the <code>-I</code>
+flag. When compiling for native code, the Lua interpreter comes as the
+additional files <code>lua-std.cmxa</code> and <code>lua-std.a</code>.
+<p>
+When we assume that our application is implemented by a module
+<code>Luaclient</code> whose source code resides in <code><a href="#NWD0-1">luaclient</a>.ml</code>, our <code>Makefile</code>
+looks like this:
+<p>
+<pre><a name="NW0-2CgwVs-1" href="#NWD0-1"><dfn>&lt;Makefile&gt;=</dfn></a>
+INTERP          = std
+OCAMLC          = ocamlc
+OCAMLC_FLAGS    =
+
+<a href="#NWD0-1">luaclient</a>: lua-$(INTERP).cma <a href="#NWD0-1">luaclient</a>.cmo
+        $(OCAMLC) $(OCAMLC_FLAGS) -o $@ unix.cma lua-$(INTERP).cma <a href="#NWD0-1">luaclient</a>.cmo
+</pre><blockquote>Defines <a href="#NWI-luaclient"><code>luaclient</code></a> (links are to index).<p>
+</blockquote><p>
+
+The <code>Makefile</code> links together the <code><a href="#NWD0-1">luaclient</a></code> binary from the library,
+the application code, and the Unix module that is required by the Lua
+code.
+<p>
+<h2><a name="NWD0-2">The Big Picture</a></h2>
+<p>
+The Lua interpreter is highly functorized and must be linked together
+before it can be used. Since we want to use Lua to control our
+application, we have to extend the Lua interpreter with new primitives
+that our application implements. These extensions, too, have to be
+linked into the interpreter. At run time, finally, we have to pass
+control to the newly created interpreter.
+<p>
+<pre><a name="NW0-1OWyz2-1" href="#NWD0-2"><dfn>&lt;luaclient.ml&gt;=</dfn></a>
+<a name="NW0-1OWyz2-1-u1" href="#NWD0-3"><i>&lt;Linking the Interpreter <code>I</code>&gt;</i></a>
+
+let <a href="#NWD0-2">main</a> () =
+    let argv    = Array.to_list Sys.argv in
+    let this    = Filename.basename (List.hd argv) in
+    let args    = List.tl argv in
+    let state   = I.mk () in (* fresh Lua interpreter *)
+    let eval e  = ignore (I.dostring state e) in
+       ( List.iter eval args
+       ; exit 0
+       )
+
+let _ = <a href="#NWD0-2">main</a> ()         (* alternatively use: module G = Lua.Run(I) *)
+</pre><blockquote>Defines <a href="#NWI-main"><code>main</code></a> (links are to index).<p>
+</blockquote><p>
+
+The interpreter implementation resides in module <code>I</code>. Several active
+interpreters can co-exist because the global state for an interpreter is
+kept as an explicit value. In our simple <code><a href="#NWD0-2">main</a></code> function we create a
+new interpreter (state) and evaluate all command line arguments inside.
+In a more realistic application we probably would evaluate some startup
+code from a file. In any case, the code we evaluate can use new
+primitives that we have added to the interpreter and therefore controls
+our application.
+<p>
+If we just want to type in Lua code interactively we don't even need to
+write our own <code><a href="#NWD0-2">main</a></code>. Instead, we can use
+<p>
+<blockquote><i><code>module G = Lua.Run(I)</code></i></blockquote>
+
+which adds a <code><a href="#NWD0-2">main</a></code> function with a read-eval-print loop.    
+<p>
+As an example for application-specific data types, we add two new Lua
+types to the interpreter. A character type (Lua only knows strings), and
+a polymorphic pair type. Both come with functions to create and observe
+them. 
+<p>
+From a Lua user's point of view the two new types are so-called <code>userdata</code>
+types whose values are accessed from funtions in the tables <code>Char</code> and
+<code>Pair</code> that act as modules. For example, <code>x=Pair.mk(&quot;one&quot;,2)</code> creates a pair
+value of a string and a number. Each component can be observed by
+<code><a name="NWD0-3">Pair.fst(x)</a></code> and <code>Pair.snd(x)</code>, respectively.
+<p>
+<h2>Linking together the interpreter</h2>
+<p>
+An interpreter is linked together from a parser and a core, which in
+turn takes our user-defined types <code>T</code> and a library module <code>L</code> that
+depends on them. We will almost always use the standard parser such that
+the main task is to construct new types and code that uses them.
+<p>
+<pre><a name="NW0-1D3FA-1" href="#NWD0-3"><dfn>&lt;Linking the Interpreter <code>I</code>&gt;=</dfn></a> <b>(<a href="#NWD0-2">&lt;-U</a>)</b>
+<a name="NW0-1D3FA-1-u1" href="#NWD0-4"><i>&lt;user defined types <code>T</code>&gt;</i></a>
+<a name="NW0-1D3FA-1-u2" href="#NWD0-5"><i>&lt;library module <code>L</code>&gt;</i></a>
+
+module I =                          (* interpreter *)  
+    Lua.MakeInterp
+        (Lua.Parser.MakeStandard)
+        (Lua.MakeEval (T) (C))
+</pre><p>
+
+<a name="NWD0-4">Each user-supplied Lua type is implemented in a module of its own. We link</a>
+all of them together into one module <code>T</code> that we pass into the
+<code>MakeCore</code> functor. The <code>T</code> module contains sub-modules, one for each
+argument, that we name for convenience.
+<p>
+<pre><a name="NW0-4HZYWA-1" href="#NWD0-4"><dfn>&lt;user defined types <code>T</code>&gt;=</dfn></a> <b>(<a href="#NWD0-3">U-&gt;</a>)</b>
+<a name="NW0-4HZYWA-1-u1" href="#NWD0-6"><i>&lt;module <code>LuaChar</code>&gt;</i></a>
+<a name="NW0-4HZYWA-1-u2" href="#NWD0-7"><i>&lt;module <code>Pair</code>&gt;</i></a>
+
+module T =                          (* new types *)
+    Lua.Lib.Combine.T3              (* T3 == link 3 modules *)
+        (LuaChar)                   (* TV1 *)
+        (Pair)                      (* TV2 *)    
+        (Luaiolib.T)                (* TV3 *)
+
+module LuaCharT     = T.TV1
+module PairT        = T.TV2
+module LuaioT       = T.TV3
+</pre><p>
+
+<a name="NWD0-5">The primitive types and functions supplied by the standard interpreter</a>
+are themselves split across several modules. Thus, we could build an
+extra-small interpreter by omitting what we don't use. Usually we want
+all we can get and link <code>L</code> together like here:
+<p>
+<pre><a name="NW0-3KAZx7-1" href="#NWD0-5"><dfn>&lt;library module <code>L</code>&gt;=</dfn></a> <b>(<a href="#NWD0-3">U-&gt;</a>)</b>
+<a name="NW0-3KAZx7-1-u1" href="#NWD0-8"><i>&lt;new primitives&gt;</i></a>
+module W = Lua.Lib.WithType (T)
+module C  =
+    Lua.Lib.Combine.C5  (* C5 == combine 4 code modules *)
+        (Luaiolib.Make(LuaioT))
+        (Luacamllib.Make(LuaioT))
+        (W (Luastrlib.M))
+        (W (Luamathlib.M))
+        (MakeLib (LuaCharT) (PairT))
+</pre><p>
+
+The IO, math, and string library are standard; our own code resides in
+<code>MakeLib</code> and is parametrized over the new Lua types (<code>LuaCharT</code>,
+<code>PairT</code>) that we have introduced.  Because the string and math
+libraries have signature <code>Lua.BARE</code> they need to be extended with a
+type (any will do), before they can be combined with others.
+<p>
+<h2>New primitive types and functions</h2>
+<p>
+Most of the code above provides necessary infrastructure. The real work
+is implementing new primitive Lua types and functions. 
+<p>
+<a name="NWD0-6">Most often we want to add not just new functionality but add also an</a>
+application-specific type to the Lua interpreter. Each type is
+represented by a module of module type <code>Lua.USERDATA</code>. As an example,
+we add a new type that represent characters. The <code>LuaChar</code> module
+provides: an OCaml representation for the new type, a name of the
+type, an equality predicate, and a function to represent a datum as a
+string.
+<p>
+<pre><a name="NW0-202iuW-1" href="#NWD0-6"><dfn>&lt;module <code>LuaChar</code>&gt;=</dfn></a> <b>(<a href="#NWD0-4">&lt;-U</a>)</b>
+module LuaChar = struct
+    type 'a t       = char
+    let tname       = &quot;char&quot;
+    let eq _        = fun x y -&gt; x = y
+    let to_string   = fun _ c -&gt; String.make 1 c 
+end
+</pre><p>
+
+As a somewhat more complicated example we also add a polymorphic pair
+that works with all Lua values. Although we don't know the
+representation of Lua values here, we do know that the type parameter
+<code>'a</code> of <code>t</code> represents the actual value data type of the
+interpreter. Therefore, our representation is simply a polymorphic pair.
+<a name="NWD0-7">The foresight of the interpreter's designer also helps us with the</a>
+problem of printing values in the <code>to_string</code> function: the first
+parameter <code>f</code> to <code>to_string</code> is a function that prints any value,
+such that <code>(f x)</code> gives us the string of value <code>x</code>.
+<p>
+Usually we have functions to work with the new types. We can implement
+them outside or inside the module that provides the type. In the case of
+<code>Pair</code>, we added <code>mk</code>, <code>fst</code>, and <code>snd</code>.
+<p>
+<pre><a name="NW0-4J1eVI-1" href="#NWD0-7"><dfn>&lt;module <code>Pair</code>&gt;=</dfn></a> <b>(<a href="#NWD0-4">&lt;-U</a>)</b>
+module Pair = struct
+    type 'a t       = 'a * 'a
+    let tname       = &quot;pair&quot;
+    let eq _        = fun x y -&gt; x = y
+    let to_string   = fun f (x,y) -&gt; Printf.sprintf &quot;(%s,%s)&quot; (f x) (f y)
+    let mk  x y     = (x,y)
+    let fst         = fst
+    let snd         = snd
+end
+</pre><p>
+
+The approved way to link together the modules that extend an interpreter
+<a name="NWD0-8">is to write a </a><code>MakeLib</code> functor. It has an argument for each new type, where
+each but the first one comes with a sharing constraint for the
+<code>combined</code> type. Intuitively, these constraints ensure that all
+modules use the same representation for values in the interpreter.
+<p>
+Note, that the arguments to <code>MakeLib</code> are <em>not</em> the modules
+<code>LuaChar</code> and <code>Pair</code> that we just have defined, but the ones
+re-exported by the |Lua.Lib.Combine.T|<i>n</i> functor.
+<p>
+<pre><a name="NW0-a4FKb-1" href="#NWD0-8"><dfn>&lt;new primitives&gt;=</dfn></a> <b>(<a href="#NWD0-5">&lt;-U</a>)</b>
+module MakeLib 
+    (CharV: Lua.Lib.TYPEVIEW with type 'a t        = 'a LuaChar.t)
+    (PairV: Lua.Lib.TYPEVIEW with type 'a t        = 'a Pair.t
+                             and  type 'a combined = 'a CharV.combined)
+        : Lua.Lib.USERCODE with type 'a userdata' = 'a CharV.combined = struct
+        
+    type 'a userdata' = 'a PairV.combined
+    module M (C: Lua.Lib.CORE with type 'a V.userdata' = 'a userdata') = struct
+        module V = C.V
+        let ( **-&gt; ) = V.( **-&gt; )
+        let ( **-&gt;&gt; ) x y = x **-&gt; V.result y
+        <a name="NW0-a4FKb-1-u1" href="#NWD0-9"><i>&lt;register new functions in interpreter&gt;</i></a>
+    end (* M *)
+end (* MakeLib *)
+</pre><p>
+
+<a name="NWD0-9">Finally we have to register the new functions in the interpreter. The</a>
+most important aspect is the conversion back and forth between the value
+representation in the interpreter, and our (much simpler) representation
+that we have provided in <code>LuaChar</code> and <code>Pair</code>. It is good practice
+to collect these conversion functions into one module <code>Map</code> with a
+function for each type.
+<p>
+<pre><a name="NW0-4sq5F-1" href="#NWD0-9"><dfn>&lt;register new functions in interpreter&gt;=</dfn></a> <b>(<a href="#NWD0-8">&lt;-U</a>)</b>
+module Map = struct
+    let pair = PairV.makemap V.userdata V.projection
+    let char = CharV.makemap V.userdata V.projection
+end    
+
+let <a href="#NWD0-9">init</a> g = 
+    <a name="NW0-4sq5F-1-u1" href="#NWD0-A"><i>&lt;register <code>Pair</code>&gt;</i></a>
+    <a name="NW0-4sq5F-1-u2" href="#NWD0-B"><i>&lt;register <code>Char</code>&gt;</i></a> 
+    <a name="NW0-4sq5F-1-u3" href="#NWD0-C"><i>&lt;register <code>Example</code>&gt;</i></a>
+</pre><blockquote>Defines <a href="#NWI-init"><code>init</code></a> (links are to index).<p>
+</blockquote><p>
+
+<a name="NWD0-A">Once we have </a><code>Map</code>, we can provide a mapping between a Lua name like
+<code>Pair.mk</code> and its OCaml implementation. The <code>register_module</code>
+function takes a list of (name, value) pairs, where a value can be a
+function. The conversion between the interpreter's internal
+representation and our's is provided by a clever infix function <code>**-&gt;</code>
+that makes the conversion function look like a function type. The
+<code>Map</code> module is here essential to name the user-defined argument
+types. 
+<p>
+<pre><a name="NW0-1idopI-1" href="#NWD0-A"><dfn>&lt;register <code>Pair</code>&gt;=</dfn></a> <b>(<a href="#NWD0-9">&lt;-U</a>)</b>
+C.register_module &quot;Pair&quot;
+    [ &quot;mk&quot;, V.efunc (V.value **-&gt; V.value **-&gt;&gt; Map.pair) Pair.mk
+    ; &quot;fst&quot;,V.efunc (Map.pair **-&gt;&gt; V.value)              Pair.fst
+    ; &quot;snd&quot;,V.efunc (Map.pair **-&gt;&gt; V.value)              Pair.snd
+    ] g;
+</pre><p>
+
+The registration of the <code>Char</code> module shows how to deal with errors in
+<a name="NWD0-B">conversions. </a><code>Char.mk</code> expects a string whose first character is used
+to create the new character value. But what if this string is empty? We
+catch this problem here where we have the core interpreters's <code>error</code>
+function available, rather in <code>LuaChar</code>, where we don't.  The argument
+<code>g</code> is the global interpreter state that must be passed to <code>error</code>.
+State <code>g</code> is an argument to <code><a href="#NWD0-9">init</a></code> inside whose body we are.  Error
+reporting isn't a problem for <code>Pair</code> because all functions in <code>Pair</code>
+are total.
+<p>
+<pre><a name="NW0-3nAQPM-1" href="#NWD0-B"><dfn>&lt;register <code>Char</code>&gt;=</dfn></a> <b>(<a href="#NWD0-9">&lt;-U</a>)</b>
+C.register_module &quot;Char&quot;
+    [ &quot;mk&quot;, V.efunc (V.string **-&gt;&gt; Map.char)
+            (function 
+            | &quot;&quot; -&gt; C.error &quot;Char.mk: empty string&quot;   
+            | s  -&gt; s.[0]
+            )
+    ] g;        
+</pre><p>
+
+<a name="NWD0-C">Sometimes we want to add functionality for existing types without adding</a>
+a new type. This case is easy because we simply can add the new
+functions without having to define extra modules for types. As an
+example, we provide some functions from the OCaml standard
+library. To avoid name space pollution we introduce an extra layer
+<code>Example</code>.
+<p><pre><a name="NW0-1RcpV6-1" href="#NWD0-C"><dfn>&lt;register <code>Example</code>&gt;=</dfn></a> <b>(<a href="#NWD0-9">&lt;-U</a>)</b>
+C.register_module &quot;Example&quot; 
+    [&quot;argv&quot;,   (V.list V.string).V.embed (Array.to_list Sys.argv);
+     &quot;getenv&quot;, V.efunc (V.string **-&gt;&gt; V.string) Sys.getenv;
+    ] g;
+</pre><p>
+
+With all explanations the client of our interpreter looks quite big. In fact,
+it is just about 100 lines long. Taking a look at the <code><a href="#NWD0-1">luaclient</a>.ml</code>
+gives us the more linear perspective of the compiler which is also
+<a name="NWD0-D">instructive to understand this code.</a>
+<p>
+<h2>Running the interpreter</h2>
+<p>
+After we have compiled and linked our client with the <code>lua-std.cma</code>
+library we can run it. Our <code><a href="#NWD0-2">main</a></code> function simply evaluates all
+command line arguments from left to right. The example below shows, that
+our extensions are indeed part of the interpreter.
+<p>
+<pre><a name="NW0-1ia8Gi-1" href="#NWD0-D"><dfn>&lt;run&gt;=</dfn></a>
+% ./<a href="#NWD0-1">luaclient</a> 'c=Char.mk(&quot;x&quot;)' 'print(c)'
+x
+
+% ./<a href="#NWD0-1">luaclient</a> 'x=Pair.mk(&quot;one&quot;,2)' 'print(x)' 'print(Pair.fst(x))'
+(one,2)
+one
+
+% ./<a href="#NWD0-1">luaclient</a> 'print(Caml.Filename.chop_extension(&quot;foo.bar&quot;))'
+foo
+</pre>
+
+<ul>
+<li><a href="#NWD0-5"><i>&lt;library module <code>L</code>&gt;</i></a>: <a href="#NWD0-3">U1</a>, <a href="#NWD0-5">D2</a>
+<li><a href="#NWD0-3"><i>&lt;Linking the Interpreter <code>I</code>&gt;</i></a>: <a href="#NWD0-2">U1</a>, <a href="#NWD0-3">D2</a>
+<li><a href="#NWD0-2"><i>&lt;luaclient.ml&gt;</i></a>: <a href="#NWD0-2">D1</a>
+<li><a href="#NWD0-1"><i>&lt;Makefile&gt;</i></a>: <a href="#NWD0-1">D1</a>
+<li><a href="#NWD0-6"><i>&lt;module <code>LuaChar</code>&gt;</i></a>: <a href="#NWD0-4">U1</a>, <a href="#NWD0-6">D2</a>
+<li><a href="#NWD0-7"><i>&lt;module <code>Pair</code>&gt;</i></a>: <a href="#NWD0-4">U1</a>, <a href="#NWD0-7">D2</a>
+<li><a href="#NWD0-8"><i>&lt;new primitives&gt;</i></a>: <a href="#NWD0-5">U1</a>, <a href="#NWD0-8">D2</a>
+<li><a href="#NWD0-B"><i>&lt;register <code>Char</code>&gt;</i></a>: <a href="#NWD0-9">U1</a>, <a href="#NWD0-B">D2</a>
+<li><a href="#NWD0-C"><i>&lt;register <code>Example</code>&gt;</i></a>: <a href="#NWD0-9">U1</a>, <a href="#NWD0-C">D2</a>
+<li><a href="#NWD0-A"><i>&lt;register <code>Pair</code>&gt;</i></a>: <a href="#NWD0-9">U1</a>, <a href="#NWD0-A">D2</a>
+<li><a href="#NWD0-9"><i>&lt;register new functions in interpreter&gt;</i></a>: <a href="#NWD0-8">U1</a>, <a href="#NWD0-9">D2</a>
+<li><a href="#NWD0-D"><i>&lt;run&gt;</i></a>: <a href="#NWD0-D">D1</a>
+<li><a href="#NWD0-4"><i>&lt;user defined types <code>T</code>&gt;</i></a>: <a href="#NWD0-3">U1</a>, <a href="#NWD0-4">D2</a>
+</ul>
+<ul>
+<li><a name="NWI-init" href="#NWD0-9">init</a>: <a href="#NWD0-9">D1</a>
+<li><a name="NWI-luaclient" href="#NWD0-1">luaclient</a>: <a href="#NWD0-1">D1</a>, <a href="#NWD0-D">U2</a>
+<li><a name="NWI-main" href="#NWD0-2">main</a>: <a href="#NWD0-2">D1</a>
+</ul>
+<p>
+
+If your Lua code is in a file, a <code>dofile(&quot;file.lua&quot;)</code> will make the
+interpreter read and execute it. This is useful for repetitive testing.
+<p>
+<h2>Further reading</h2>
+<p>
+This document provides a first recipe to embed the Lua interpreter into
+an application but it cannot explain every detail. The next document you
+should try to understand is Section 1.1 Values in <code>lua.nw</code> that
+documents the Lua API. In particular, Section 1.1 lists all
+<a name="NWD0-E">conversion functions that are available to map values between their</a>
+OCaml and Lua representation. The rest of <code>lua.nw</code> explains the
+multiple ways libraries can be combined and is important when you want
+to combine more than 10 libraries or types, or you want to go to the
+limits in other ways.
+<p>
+<!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  -->
+
+<!-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  -->
+

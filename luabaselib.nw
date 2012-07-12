@@ -1,0 +1,129 @@
+% -*- mode: Noweb; noweb-code-mode: caml-mode -*-
+% Grades     ::=    "%%Grades:" Quality Importance Urgency
+% Quality    ::=    A|B|C|D|E
+% Importance ::=    Central|Subsystem|Peripheral
+% Urgency    ::=    Immediate|Soon|Later
+%
+% Example (at beginning of line): %%Grades: B Central Soon
+
+<<luabaselib.mli>>=
+module Add (MakeParser : Luaparser.MAKER) (I : Luainterp.S) : sig
+  include Luainterp.S
+  module Parser : Luaparser.S with type chunk = Ast.chunk
+  val do_lexbuf : sourcename:string -> state -> Lexing.lexbuf -> value list
+  val dostring  : state -> string -> value list
+  val dofile    : state -> string -> value list
+  val mk        : unit -> state  (* builds state and runs startup code *)
+end with module Value = I.Value
+<<luabaselib.ml>>=
+module Add (MakeParser : Luaparser.MAKER) (I : Luainterp.S) = struct
+  module Parser = MakeParser (I.Ast)
+  module P = Parser
+  module V = I.Value
+  <<toplevel>>
+  let ( **-> ) = V.( **-> )
+  let ( **->> ) x y = x **-> V.result y
+
+  let next t key =
+    let k, v =
+      try match key with
+      | V.Nil -> Luahash.first t
+      | _   -> Luahash.next t key
+      with Not_found -> V.Nil, V.Nil
+    in [k; v]
+
+  let objname g v =
+    let tail = [] in
+    let ss = match V.objname g v with
+    | Some (V.Fallback n) -> "`" :: n :: "' fallback" :: tail
+    | Some (V.Global n)   -> "function " :: n :: tail
+    | Some (V.Element (t, V.String n)) -> "function " :: t :: "." :: n :: tail
+    | Some (V.Element (t, v))    -> "function " :: t :: "[" :: V.to_string v :: "]" :: tail
+    | None -> "unnamed " :: V.to_string v :: tail in
+    String.concat "" ss
+
+
+
+  let luabaselib g =
+    [ "dofile",      V.efunc (V.string **-> V.resultvs) (dofile g)
+    ; "dostring",    V.efunc (V.string **-> V.resultvs) (dostring g)
+        (* should catch Sys_error and turn into an error fallback... *)
+    ; "size",        V.efunc (V.table **->> V.int) Luahash.population
+    ; "next",        V.efunc (V.table **->  V.value **-> V.resultvs) next
+    ; "nextvar",     V.efunc (V.value **->  V.resultvs) (fun x -> next g.V.globals x)
+    ; "tostring",    V.efunc (V.value **->> V.string) V.to_string
+    ; "objname",     V.efunc (V.value **->> V.string) (objname g)
+    ; "print",       V.caml_func 
+                        (fun args ->
+                          List.iter (fun x -> print_endline (V.to_string x)) args;
+                          flush stdout;
+                          [])
+    ; "tonumber",    V.efunc (V.float **->> V.float) (fun x -> x)
+    ; "type",        V.efunc (V.value **->> V.string)
+                     (function
+                     | V.Nil            -> "nil"
+                     | V.Number _       -> "number"
+                     | V.String _       -> "string"
+                     | V.Table _        -> "table"
+                     | V.Function (_,_) -> "function"
+                     | V.Userdata _     -> "userdata")
+    ; "assert",      V.efunc (V.value **-> V.default "" V.string **->> V.unit)
+                     (fun c msg -> match c with
+                     | V.Nil -> I.error ("assertion failed: " ^ msg)
+                     | _ -> ())
+    ; "error",       V.efunc (V.string **->> V.unit) I.error
+    ; "setglobal",   V.efunc (V.value **-> V.value **->> V.unit)
+                     (fun k v -> V.Table.bind g.V.globals k v)
+    ; "getglobal",   V.efunc (V.value **->> V.value) (I.getglobal g)
+    ; "setfallback", V.efunc (V.string **-> V.value **->> V.value) (I.setfallback g)
+    ] 
+
+  include I
+  let mk () =
+    let g, init = I.pre_mk () in
+    I.register_globals (luabaselib g) g;
+    init (fun s -> ignore (dostring g s));
+    g
+end
+<<toplevel>>=
+let lex map buf = Luascanner.token buf map
+let do_lexbuf ~sourcename:filename g buf =
+  let map = Srcmap.mk () in
+  let _ = Srcmap.sync map 0 (filename, 1, 1) in
+  try
+    let chunks = P.chunks (lex map) buf in
+    let pgm = I.compile ~srcdbg:(map, false) chunks g in
+    match pgm () with
+    | [] -> [I.Value.String "executed without errors"]
+    | answers -> answers
+  with
+  | Parsing.Parse_error ->
+      let file, line, _ = Srcmap.last map in begin
+        prerr_string file;
+        prerr_string ", line ";
+        prerr_int line;
+        prerr_endline ": syntax error";
+        []
+      end 
+  | I.Error s -> (prerr_endline "Lua interpreter halted with error"; [])
+  | I.Value.Projection (v, w) -> (prerr_endline ("error projecting to " ^ w); [])
+
+
+let dostring g s = 
+  let abbreviate s =
+    if String.length s < 200 then s
+    else String.sub s 0 60 ^ "..." in
+  I.with_stack (V.srcloc ("dostring('" ^ abbreviate s ^ "')") 0) g
+    (do_lexbuf ~sourcename:"<string>" g) (Lexing.from_string s)
+
+let dofile g infile =
+  try
+    let f = match infile with "-" -> stdin | _ -> open_in infile in
+    let close () = if infile <> "-" then close_in f else () in
+    try 
+      let answer = I.with_stack (V.srcloc ("dofile('" ^ infile ^ "')") 0) g
+                     (do_lexbuf ~sourcename:infile g) (Lexing.from_channel f)
+      in  (close(); answer)
+    with e -> (close (); raise e)
+  with Sys_error msg -> [V.Nil; V.String ("System error: " ^ msg)]
+@ 

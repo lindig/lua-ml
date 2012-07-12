@@ -1,0 +1,80 @@
+                          README for Lua-ML
+
+Lua-ML is implementation of Lua version 2.5 in Objective Caml.  
+Lua (http://www.lua.org) is an extension language designed to be
+embedded into an application.  In Quick C--, Lua controls the
+compiler's back end, which a programmer can customize by writing Lua
+code. The Lua implementation relies on the build infrastructure from
+the rest of the compiler, which nonstandard tools like mk and Noweb.
+The Makefile.alone file helps you build the Lua interpreter from
+source using standard tools.
+
+PREREQUISITES
+
+Lua-ML is written in Objective Caml. You need the following tools to
+build it.
+
+(1) Objective Caml 3.0[46]
+(2) Perl
+(3) GNU Make
+(4) Standard Unix tools: sed    (probably forgot some here)
+
+
+BUILDING THE INTERPRETER
+
+(1) Get a lua-ml tar file from http://www.cminusminus.org/dist.
+
+(2) Unpack the tar file and cd into the lua-ml directory.
+
+	tar xf lua-ml.tar
+        cd lua-ml
+        
+(3) Check the head of Makefile.alone but usually the default settings
+    should just work.
+
+(4)     make -f Makefile.alone depend
+        make -f Makefile.alone all
+
+    This builds the interpreter and demo clients.
+    
+(5) Read luaclient.html. This documents explains how to embed the
+    interpreter into an application. Play with the luaclient binary and
+    take a look at the luaclient target in Makefile.alone.
+
+(6) The definition of Lua 2.5 is part of the directory: refman.ps.
+    Not all of the library is implemented yet in Lua-ML.
+
+(7) If you want to use the interpreter in your own applications you need
+    to copy the following files to some place where ocamlc(1) can find
+    them:
+
+    lua-std.cma 
+    lua*.cmi
+
+CAVEATS
+
+We normally build Lua-ML as an integrated part of the Quick C--
+compiler, so we might accidentally introduce a bug into the standalone
+build.   
+
+All sources are literate programs, but to build the documentation 
+you need the Quick C-- build infrastructure.
+
+COPYRIGHT
+
+The code, like the rest of Quick C--, is in the public domain.
+
+CONTACT
+
+The Lua implementation is by Norman Ramsey <nr@eecs.harvard.edu>, the
+standalone patch by Christian Lindig <lindig@eecs.harvard.edu>. See
+also http://www.cminusminus.org.
+
+If you make changes to the interpreter or to the demo client
+(luaclient.nw) *please* edit the *.nw files and *not* the derived files
+*.ml and *.mli. Only send patches for *.nw files!
+
+
+------------------------------------------------------------------ 
+ $Id: README.ALONE,v 1.3 2003-06-06 20:13:04 nr Exp $
+------------------------------------------------------------------ 

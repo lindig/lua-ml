@@ -1,0 +1,652 @@
+% -*- mode: Noweb; noweb-code-mode: caml-mode -*-
+
+% Grades     ::=    "%%Grades:" Quality Importance Urgency
+% Quality    ::=    A|B|C|D|E
+% Importance ::=    Central|Subsystem|Peripheral
+% Urgency    ::=    Immediate|Soon|Later
+%
+% Example (at beginning of line): %%Grades: B Central Soon
+\section{The Lua-ML application program interface}
+
+\subsection{Values}
+
+As in Lua, we keep the value space simple and small.
+Unlike Lua, we have only one kind of function.
+The type [[userdata']] is not specified here; 
+it is intended to be supplied by a combination of user-defined libraries.
+
+The [[VALUE]] interface is a key for clients because it not only specifies what
+a Lua value is, but also provides higher-order embedding/projection
+pairs so that Caml values can be mapped to Lua values and back again.
+<<lua.mli>>=
+module type VALUE = sig
+  type 'a userdata'
+  type srcloc
+  type initstate
+  type value =
+    | Nil
+    | Number   of float
+    | String   of string
+    | Function of srcloc * func
+    | Userdata of userdata
+    | Table    of table
+  and func  = value list -> value list
+  and table = (value, value) Luahash.t
+  and userdata  = value userdata'
+  and state = { globals : table
+              ; fallbacks : (string, value) Hashtbl.t
+              ; mutable callstack : activation list
+              ; mutable currentloc : Srcmap.location option (* supersedes top of stack *)
+              ; startup : initstate
+              }
+  and activation = srcloc * Srcmap.location option
+
+  val caml_func : func -> value (* each result unique *)
+  val lua_func  : file:string -> linedefined:int -> func -> value
+  val srcloc    : file:string -> linedefined:int -> srcloc (* must NOT be reused *)
+  val eq        : value -> value -> bool
+  val to_string : value -> string
+  val activation_strings : state -> activation -> string list
+  type objname = Fallback of string | Global of string | Element of string * value
+  val objname : state -> value -> objname option
+     (* 'fallback', 'global', or 'element', name *)
+
+  val state : unit -> state (* empty state, without even fallbacks *)
+  val at_init : state -> string list -> unit  (* run code at startup time *)
+  val initcode : state -> (string -> unit) -> unit (* for the implementation only *)
+@ If a library wants to register Lua code to be executed at startup
+time, it can call [[at_init]].  
+No library should ever call [[initcode]]; that function is reserved
+for the implementation, which uses it to run the registered code.
+@
+Lua tables are not quite like Caml tables, but they are close.
+<<lua.mli>>=
+  module Table : sig
+    val create : int -> table
+    val find   : table -> key:value -> value
+    val bind   : table -> key:value -> data:value -> unit
+    val of_list : (string * value) list -> table
+  end
+@ 
+Now, for embedding and projection.
+This is a key, as it completely replaces the stupid stack-based
+interface found in~C.
+Instead, we use higher-order functions to whip up functionality as needed.
+If a projection fails, it raises [[Projection]] giving the value it
+tried to project and a string indicating what it tried to project to.
+Library clients may use the function [[projection]] to achieve this effect.
+<<lua.mli>>=
+  exception Projection of value * string
+  val projection : value -> string -> 'a
+  type ('a, 'b, 'c) ep = ('a, 'b, 'c) Luavalue.ep
+    = { embed : 'a -> 'b; project : 'b -> 'a; is : 'c -> bool }
+  type 'a map  = ('a, value, value) ep
+  type 'a mapf  (* used to build function maps that curry/uncurry *)
+@ 
+These functions enable us to convert the basic types.
+<<lua.mli>>=
+  val float    : float  map
+  val int      : int    map
+  val bool     : bool   map
+  val string   : string map
+  val userdata : userdata map
+  val unit     : unit   map
+@ 
+To convert a value of option type, we represent [[None]] as [[Nil]].
+Woe betide you if [[Nil]] is a valid value of your type!
+We won't see it.
+<<lua.mli>>=
+  val option : 'a map -> 'a option map
+@ 
+To project with a default value, we provide [[default ]]$v$[[ t]],
+which behaves just as~[[t]] except it projects [[Nil]] to~$v$.
+<<lua.mli>>=
+  val default : 'a -> 'a map -> 'a map
+@ 
+To embed a list of values, we produce a table with a binding of the
+length to the name [[n]] and bindings of the values to the numbers $1..n$.
+To project a Lua table down to a list, we first look to see if the table 
+binds the name~[[n]]. 
+If so, we take that to be the number of elements; otherwise we use the table's 
+population.  (In the latter case, lists cannot contain [[nil]].)
+This way, users are free to include [[n]] or not as they choose.
+<<lua.mli>>=
+  val list    : 'a map -> 'a list map   (* does not project nil *)
+  val optlist : 'a map -> 'a list map   (* projects nil to empty list *)
+@ 
+If for some reason a Caml function operates on Lua values, we need an
+identity pair.  We also enable functions that expect tables.
+<<lua.mli>>=
+  val value  : value map
+  val table  : table map
+@ 
+A common case is to use a table as a record, with string keys
+and homogenous values.
+<<lua.mli>>=
+  val record : 'a map -> (string * 'a) list map
+@ 
+Another common case is to represent an enumeration type using strings.
+The string passed to [[enum]] is the name of the type, which is used
+in projection errors.
+The list passed to [[enum]] must contain \emph{every} value of
+type~[['a]], which must be comparable using~[[=]].
+To do otherwise is to risk an assertion failure during embedding.
+<<lua.mli>>=
+  val enum   : string -> (string * 'a) list -> 'a map
+@
+Here is the support for converting functions.
+First, if one wants a Lua function to be curried (as the Caml
+functions are), one can simply use [[-->]].
+There's a small gotcha, in that we can't make [[-->]] right
+associative.
+That's OK, as it probably shouldn't be used for curried functions.
+
+For curried functions that should take lists of arguments in Lua,
+we use [[**->]], [[func]], and [[result]].
+The idea is this: if we have a Caml function type
+[[t -> u -> v -> w]], we can turn this into a Lua function of three
+arguments by using the embedding/projection pair produced by
+\begin{quote}
+[[pfunc (t **-> u **-> v **-> result w)]]
+\end{quote}
+We recommend defining the abbreviation
+\mbox{[[v **->> w]]} $\equiv$ \mbox{[[v **-> result w]]}.
+<<lua.mli>>=
+  val ( -->  ) : 'a map  -> 'b map  -> ('a -> 'b) map
+  val ( **-> ) : 'a map  -> 'b mapf -> ('a -> 'b) mapf
+  val result   : 'a map  -> 'a mapf
+  val resultvs : value list mapf                   (* functions returning value lists*)
+  val resultpair:'a map  -> 'b map  -> ('a * 'b)       mapf
+  val dots_arrow:'a map  -> 'b map  -> ('a list -> 'b) mapf     (* varargs functions *)
+  val results  : ('a -> value list) -> (value list -> 'a) -> 'a mapf  
+                                    (* 'a represents multiple results (general case) *)
+  val func     : 'a mapf -> 'a map                 (* function *)
+  val closure  : 'a mapf -> 'a map                 (* function or table+apply method *)
+  val efunc    : 'a mapf -> 'a -> value            (* efunc f = (closure f).embed *)
+@ 
+\paragraph{Support for dynamically typed Lua functions}
+Type-based dispatch defines several alternatives for a function and
+at each call, chooses the right function based on the types of the
+arguments. 
+<<lua.mli>>=
+  type alt                              (* an alternative *)
+  val alt    : 'a mapf -> 'a -> alt     (* create an alternative *)
+  val choose : alt list -> value        (* dispatch on type/number of args *)
+@ 
+It's also possible to combine multiple types for a single argument.
+The idea is just like parsing combinators, and we use notation from
+Jeroen Fokker's paper \emph{Functional Parsers}.
+We can use the choice operator [[<|>]] to combine two maps.
+To project, map [[t <|> t']] projects using [[t]] if~[[t]] claims to
+recognize the argument.  
+If [[t]]~does not recognize the argument, the map projects
+using~[[t']].
+To embed, map [[t <|> t']] always embeds using [[t']].
+
+We can use the continuation operator [[>>=]] to apply a function to a
+value after projection.
+To project, the map [[t <@ f]] applies~[[f]] to the result of
+projecting with~[[t]].
+Because function~[[f]] cannot be inverted, the map [[t <@ f]] is not
+capable of embedding.
+It is therefore useful primarily on the left-hand side of the [[<|>]]
+operator. 
+<<lua.mli>>=
+  val ( <|> ) : 'a map -> 'a map -> 'a map 
+  val ( <@  ) : 'a map -> ('a -> 'b) -> 'b map   (* apply continuation after project *)
+end
+@
+\subsection{User-defined types and state}
+
+For the rest of the interface, we can make Lua values by supplying an
+appropriate [[userdata]] type.  
+<<lua.mli>>=
+module type USERDATA = sig
+  type 'a t                             (* type parameter will be Lua value *)
+  val tname : string  (* name of this type, for projection errors *)
+  val eq : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+  val to_string : ('a -> string) -> 'a t -> string
+end
+@ 
+\subsection{Parsers}
+
+It is possible for users to replace the Lua parser with a parser of
+their own, but it must read the same kinds of tokens and produce the
+same kinds of ASTs as the existing parser.
+Because most users won't do this, we don't document the token and AST types
+here---you must look in the appropriate source modules.
+<<lua.mli>>=
+module type AST = Luaast.S
+module Parser : sig
+  type token = Luaparser.token
+  module type S =
+    sig
+      type chunk
+      val chunks : (Lexing.lexbuf  -> token) -> Lexing.lexbuf -> chunk list
+    end
+  module type MAKER = functor (Ast : AST) -> S with type chunk = Ast.chunk
+  module MakeStandard : MAKER
+end
+@ 
+You should never have to worry about a scanner for Lua---that should
+be taken care of for you by [[dofile]] and [[dostring]] in the basic library.
+@ 
+
+\subsection{Libraries}
+
+The module [[Lua.Lib]] provides library support.
+<<lua.mli>>=
+module Lib : sig
+  <<library support>>
+end
+@ 
+To build a Lua interpreter, one must specify the type of userdata, and
+one must specify what libraries are to be included.
+Complexities arise when the library code depends on the type of
+userdata.
+For example, the I/O library must be able to project userdata to
+values of type [[in_channel]] and [[out_channel]], representing open
+files.
+@
+The approved technique occurs in three stages:
+\begin{enumerate}
+\item
+Combine all the types using [[Lualib.Combine.T]]$n$, where $n$~is the
+number of different types of userdata supported.
+\item
+Use the [[COMBINED_TYPE]] module returned to inform all the libraries
+how to get 
+``views'' of the types they depend on.
+This may mean passing one or more views to each library.
+\item
+Combine all the libraries into a single library using
+[[Lualib.Combine.T]]$m$, where $m$~is the number of libraries.
+\end{enumerate}
+The combined types and libraries can then be used to build an interpreter.
+@
+While this scheme is a bit more elaborate than a scheme in which types
+and libraries are bundled together, it makes it possible for each
+library to depend on any set of types---essential for complex interpreters.
+@
+The types that are combined all match [[USERTYPE]].
+<<library support>>=
+module type USERTYPE = sig
+  type 'a t                             (* type parameter will be Lua value *)
+  val tname : string  (* name of this type, for projection errors *)
+  val eq : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+  val to_string : ('a -> string) -> 'a t -> string
+end
+@ 
+A ``combined type'' is composed of up to 10 individual types.
+We provide a ``view'' of each type, which is essentially the ability
+to convert between values of the combined type and values of the
+individual type.
+We could provide this ability as a pair of type
+[[('a t, 'a combined) Luavalue.ep]], but it is more convenient for the
+clients to provide it as a function.
+Given a view [[T : TYPEVIEW]] and a suitable module
+[[V : Luavalue.S]], clients will have code 
+such as
+\begin{verbatim}
+   let map = T.makemap V.userdata V.projection
+\end{verbatim}
+<<library support>>=
+module type TYPEVIEW = sig
+  type 'a combined
+  type 'a t  (* the individual type of which this is a view *)
+  val makemap : ('a combined, 'b, 'b) Luavalue.ep -> ('b -> string -> 'a t)
+                -> ('a t, 'b, 'b) Luavalue.ep
+end
+@ 
+When up to ten types are combined into a single type, 
+the result provides views of all ten.
+This code would be a lot cleaner with a better calculus of signatures.
+<<library support>>=
+module type COMBINED_CORE = sig
+  type 'a also_t
+  module type VIEW = TYPEVIEW with type 'a combined = 'a also_t
+  module TV1  : VIEW
+  module TV2  : VIEW
+  module TV3  : VIEW
+  module TV4  : VIEW
+  module TV5  : VIEW
+  module TV6  : VIEW
+  module TV7  : VIEW
+  module TV8  : VIEW
+  module TV9  : VIEW
+  module TV10 : VIEW
+end
+module type COMBINED_VIEWS = sig
+  type 'a t
+  include COMBINED_CORE with type 'a also_t = 'a t
+end
+module type COMBINED_TYPE = sig
+  include USERTYPE
+  include COMBINED_CORE with type 'a also_t = 'a t
+end
+@ 
+A library module needs zero or more views, plus an \emph{interpreter
+core}, which enables libraries to use some of the capabilities of the
+interpreter. 
+<<library support>>=
+module type CORE = sig
+  module V : Luavalue.S
+  val error : string -> 'a  (* error fallback *)
+  val getglobal : V.state -> V.value -> V.value
+  val fallback : string -> V.state -> V.value list -> V.value list
+    (* invoke named fallback on given state and arguments *)
+  val setfallback : V.state -> string -> V.value -> V.value
+    (* sets fallback, returns previous one *)
+  val apply : V.value -> V.state -> V.value list -> V.value list
+
+  val register_globals :           (string * V.value) list -> V.state -> unit
+    (* registers values as named global variables *)
+  val register_module  : string -> (string * V.value) list -> V.state -> unit
+    (* register_module t l inserts members of l into global table t, 
+       creating t if needed *)
+end
+@ 
+A library does two things: add values to the initial state of an
+interpreter and provide code to be executed at startup time.
+The values are the functions, etc, provided by the library.
+If the library needs to attach private data to the state of the
+interpreter, it can either use closures to capture this state (see the
+I/O library for an example) or it can keep the state in the
+interpreter's global variables.
+If per-interpreter state must be shared among two or more libraries,
+global variables are the only option.
+The code is a list of strings, and it should be registered using the
+[[at_init]] function in the [[VALUE]] structure.
+The \emph{only} safe time to call [[at_init]] is from within an
+[[init]] function.
+@
+A \emph{bare} library does not use any user types---only the basic
+ones built into every Lua interpreter.  That means it works with any
+core at all.
+<<library support>>=
+module type BARECODE = 
+  functor (C : CORE) -> sig
+    val init : C.V.state -> unit
+  end
+@
+A \emph{typeful} library won't work with just any core---it works only
+with particular cores.  In practice, it will work for cores in which
+the userdata type is the [[combined]] type of the view on which the
+typeful library depends.
+<<library support>>=
+module type USERCODE = sig
+  type 'a userdata'  (* the userdata' tycon of the core on which lib depends *)
+  module M : functor (C : CORE with type 'a V.userdata' = 'a userdata') -> sig
+    val init : C.V.state -> unit
+  end
+end
+@ 
+For simplicity, we combine only typeful libraries.
+This means we occasionally need to extend a bare library to make it typeful.
+We put the type first, not the library, because the partial
+application is useful.
+<<library support>>=
+module WithType
+  (T : USERTYPE) (L : BARECODE) : USERCODE with type 'a userdata' = 'a T.t
+@ 
+Herewith the module [[Combine]], which contains members for combining
+up to 10 types and up to 10 libraries.
+<<library support>>=
+module Combine : sig
+  module T10 (T1 : USERTYPE) (T2 : USERTYPE) (T3 : USERTYPE) (T4 : USERTYPE)
+             (T5 : USERTYPE) (T6 : USERTYPE) (T7 : USERTYPE) (T8 : USERTYPE)
+             (T9 : USERTYPE) (T10 : USERTYPE)
+   : COMBINED_TYPE with type 'a TV1.t = 'a T1.t with type 'a TV2.t = 'a T2.t
+                   with type 'a TV3.t = 'a T3.t with type 'a TV4.t = 'a T4.t
+                   with type 'a TV5.t = 'a T5.t with type 'a TV6.t = 'a T6.t
+                   with type 'a TV7.t = 'a T7.t with type 'a TV8.t = 'a T8.t
+                   with type 'a TV9.t = 'a T9.t with type 'a TV10.t = 'a T10.t
+  <<similar specifications for [[T1]] to [[T9]]>>
+  module C10 (C1 : USERCODE)
+    (C2 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C3 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C4 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C5 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C6 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C7 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C8 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C9 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C10 : USERCODE with type 'a userdata' = 'a C1.userdata') :
+    USERCODE with type 'a userdata' = 'a C1.userdata'
+  <<similar specifications for [[C1]] to [[C9]]>>
+end
+@ 
+If a user needs more than 10~types, it's necessary to lift a nested
+view.  See [[main.nw]] in the source distribution for an example of lifting.
+<<library support>>=
+module Lift (T : COMBINED_TYPE) (View : TYPEVIEW with type 'a t = 'a T.t) :
+  COMBINED_VIEWS with type 'a t = 'a View.combined
+     with type 'a TV1.t = 'a T.TV1.t
+     with type 'a TV2.t = 'a T.TV2.t
+     with type 'a TV3.t = 'a T.TV3.t
+     with type 'a TV4.t = 'a T.TV4.t
+     with type 'a TV5.t = 'a T.TV5.t
+     with type 'a TV6.t = 'a T.TV6.t
+     with type 'a TV7.t = 'a T.TV7.t
+     with type 'a TV8.t = 'a T.TV8.t
+     with type 'a TV9.t = 'a T.TV9.t
+     with type 'a TV10.t = 'a T.TV10.t
+@
+
+@
+\subsection{Building an interpreter}
+
+To build an interpreter, a user must provide a user library to make
+an interpreter core, then add a basic library to this core.
+Because  the basic library includes [[dofile]] and [[dostring]], 
+one must provide a parser to make this library.
+@
+The core interpreter contains a compiler for ASTs and some other
+stuff that I might feel like documenting one day.
+The function [[pre_mk]] provides both an initial state and the startup
+code from libraries.  The startup code is intended to be passed
+[[dostring]].   
+<<lua.mli>>=
+module type EVALUATOR = sig
+  module Value : VALUE
+  module Ast   : AST with module Value = Value
+  type state = Value.state
+  type value = Value.value
+  exception Error of string
+  type compiled = unit -> value list
+  val compile : srcdbg:(Srcmap.map * bool) -> Ast.chunk list -> state -> compiled
+  type startup_code = (string -> unit) -> unit
+  val pre_mk  : unit -> state * startup_code (* produce a fresh, initialized state *)
+  val error   : string -> 'a    (* error fallback *)
+
+  val getglobal : state -> value -> value
+    (* get the named global variable *)
+  val fallback : string -> state -> value list -> value list
+    (* invoke named fallback on given state and arguments *)
+  val with_stack  : Value.srcloc -> state -> ('a -> 'b) -> 'a -> 'b
+    (* evaluate function with given srcloc on activation stack *)
+
+  val setfallback : state -> string -> value -> value
+    (* sets fallback, returns previous one *)
+  val register_globals :           (string * value) list -> state -> unit
+    (* registers values as named global variables *)
+  val register_module  : string -> (string * value) list -> state -> unit
+    (* register_module t l inserts members of l into global table t, 
+       creating t if needed *)
+end
+
+module MakeEval
+    (T : Lib.USERTYPE)
+    (L : Lib.USERCODE with type 'a userdata' = 'a T.t)
+    : EVALUATOR with type 'a Value.userdata' = 'a T.t
+@ 
+Because building an interpreter requires a library and a type, and because not
+every client will want to create a special library, we provide empty
+libraries and types.
+<<lua.mli>>=
+module Empty : sig
+  module Type : Lib.USERTYPE
+  module Library : Lib.USERCODE
+end
+@ 
+We also provide three standard libraries:
+[[Luastrlib : Lib.BARECODE]],
+[[Luamathlib : Lib.BARECODE]],
+and
+[[Luaiolib : Lib.FULL]].
+We don't mention these here because we want you to be able to leave
+them out if you won't use them.
+@
+Finally, to make a full-blown interpreter, you need to supply a
+parser.
+We then add the basic library.
+With the basic library in place, you get the function [[mk]], which
+makes a fresh state, including running any startup code.
+<<lua.mli>>=
+module type INTERP = sig
+  include EVALUATOR
+  module Parser : Luaparser.S with type chunk = Ast.chunk
+  val do_lexbuf : sourcename:string -> state -> Lexing.lexbuf -> value list
+  val dostring  : state -> string -> value list
+  val dofile    : state -> string -> value list
+  val mk        : unit -> state
+end
+module MakeInterp (MakeParser : Parser.MAKER) (I : EVALUATOR)
+    : INTERP with module Value = I.Value
+@ 
+Once we've made an interpreter, if we like, we can run it using the
+command-line arguments.
+If there are no arguments, it runs interactively from standard input.
+<<lua.mli>>=
+module Run (I : INTERP) : sig end  (* runs interpreter on Sys.argv *)
+@ 
+Here is an example of how to build an interpreter that uses the three
+standard libraries:
+\begin{verbatim}
+  module T = Lua.Lib.Combine.T1 (Luaiolib.T)
+  module X = Lua.Lib.WithType (T)
+  module L = Lua.Lib.Combine.C3 (Luaiolib.Make (T.T1)) 
+                                (X(Luastrlib.M)) (X(Luamathlib.M))
+  module I = Lua.MakeInterp (Lua.Parser.MakeStandard) (Lua.MakeEval (T) (L))
+  module Go = Lua.Run(I)
+\end{verbatim}
+Here is another example, this time of an interpreter that uses the I/O
+library, an ``optimization backplane,'' and support for graph
+coloring.
+The [[Luacolorgraph]] library shares the backplane and graph-coloring
+types. 
+\begin{verbatim}
+  module T = Lua.Lib.Combine.T3 (Luaiolib.T) (Luabackplane.T) (Luacolorgraph.T)
+  module X = Lua.Lib.WithType (T)
+  module L = Lua.Lib.Combine.C5
+               (Luaiolib.Make (T.TV1))
+               (X(Luastrlib.M)) 
+               (X(Luamathlib.M))
+               (Luabackplane.Make(T.TV2))
+               (Luacolorgraph.Make(T.TV2)(T.TV3))
+  module I = Lua.MakeInterp (Lua.Parser.MakeStandard) (Lua.MakeEval (T) (L))
+  module Go = Lua.Run(I)
+\end{verbatim}
+@
+
+\section{Implementation}
+@
+<<lua.ml>>=
+module type VALUE = Luavalue.S
+module type USERDATA = Luavalue.USERDATA
+
+module Lib = Lualib
+module Parser = Luaparser
+module type AST = Luaast.S
+
+module type EVALUATOR = Luainterp.S
+module type INTERP = sig
+  include EVALUATOR
+  module Parser : Luaparser.S with type chunk = Ast.chunk
+  val do_lexbuf : sourcename:string -> state -> Lexing.lexbuf -> value list
+  val dostring  : state -> string -> value list
+  val dofile    : state -> string -> value list
+  val mk        : unit -> state
+end
+module Run (I : INTERP) = Luarun.Make (I)
+module MakeEval = Luainterp.Make
+module MakeInterp = Luabaselib.Add
+
+module Empty = Lualib.Empty
+
+let scanner map buf = Luascanner.token buf map
+@ 
+<<similar specifications for [[C1]] to [[C9]]>>=
+  module C1 (C1 : USERCODE)
+  : USERCODE with type 'a userdata' = 'a C1.userdata'
+  module C2 (C1 : USERCODE)
+    (C2 : USERCODE with type 'a userdata' = 'a C1.userdata')
+  : USERCODE with type 'a userdata' = 'a C1.userdata'
+  module C3 (C1 : USERCODE)
+    (C2 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C3 : USERCODE with type 'a userdata' = 'a C1.userdata')
+  : USERCODE with type 'a userdata' = 'a C1.userdata'
+  module C4 (C1 : USERCODE)
+    (C2 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C3 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C4 : USERCODE with type 'a userdata' = 'a C1.userdata')
+  : USERCODE with type 'a userdata' = 'a C1.userdata'
+  module C5 (C1 : USERCODE)
+    (C2 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C3 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C4 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C5 : USERCODE with type 'a userdata' = 'a C1.userdata')
+  : USERCODE with type 'a userdata' = 'a C1.userdata'
+  module C6 (C1 : USERCODE)
+    (C2 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C3 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C4 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C5 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C6 : USERCODE with type 'a userdata' = 'a C1.userdata')
+  : USERCODE with type 'a userdata' = 'a C1.userdata'
+  module C7 (C1 : USERCODE)
+    (C2 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C3 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C4 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C5 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C6 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C7 : USERCODE with type 'a userdata' = 'a C1.userdata')
+  : USERCODE with type 'a userdata' = 'a C1.userdata'
+  module C8 (C1 : USERCODE)
+    (C2 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C3 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C4 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C5 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C6 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C7 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C8 : USERCODE with type 'a userdata' = 'a C1.userdata')
+  : USERCODE with type 'a userdata' = 'a C1.userdata'
+  module C9 (C1 : USERCODE)
+    (C2 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C3 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C4 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C5 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C6 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C7 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C8 : USERCODE with type 'a userdata' = 'a C1.userdata')
+    (C9 : USERCODE with type 'a userdata' = 'a C1.userdata')
+  : USERCODE with type 'a userdata' = 'a C1.userdata'
+<<similar specifications for [[T1]] to [[T9]]>>=
+module T1 (T1 : USERTYPE)  : COMBINED_TYPE
+ with type 'a TV1.t = 'a T1.t
+module T2 (T1 : USERTYPE) (T2 : USERTYPE)  : COMBINED_TYPE
+ with type 'a TV1.t = 'a T1.t with type 'a TV2.t = 'a T2.t
+module T3 (T1 : USERTYPE) (T2 : USERTYPE) (T3 : USERTYPE)  : COMBINED_TYPE
+ with type 'a TV1.t = 'a T1.t with type 'a TV2.t = 'a T2.t with type 'a TV3.t = 'a T3.t
+module T4 (T1 : USERTYPE) (T2 : USERTYPE) (T3 : USERTYPE) (T4 : USERTYPE)  : COMBINED_TYPE
+ with type 'a TV1.t = 'a T1.t with type 'a TV2.t = 'a T2.t with type 'a TV3.t = 'a T3.t with type 'a TV4.t = 'a T4.t
+module T5 (T1 : USERTYPE) (T2 : USERTYPE) (T3 : USERTYPE) (T4 : USERTYPE) (T5 : USERTYPE)  : COMBINED_TYPE
+ with type 'a TV1.t = 'a T1.t with type 'a TV2.t = 'a T2.t with type 'a TV3.t = 'a T3.t with type 'a TV4.t = 'a T4.t with type 'a TV5.t = 'a T5.t
+module T6 (T1 : USERTYPE) (T2 : USERTYPE) (T3 : USERTYPE) (T4 : USERTYPE) (T5 : USERTYPE) (T6 : USERTYPE)  : COMBINED_TYPE
+ with type 'a TV1.t = 'a T1.t with type 'a TV2.t = 'a T2.t with type 'a TV3.t = 'a T3.t with type 'a TV4.t = 'a T4.t with type 'a TV5.t = 'a T5.t with type 'a TV6.t = 'a T6.t
+module T7 (T1 : USERTYPE) (T2 : USERTYPE) (T3 : USERTYPE) (T4 : USERTYPE) (T5 : USERTYPE) (T6 : USERTYPE) (T7 : USERTYPE)  : COMBINED_TYPE
+ with type 'a TV1.t = 'a T1.t with type 'a TV2.t = 'a T2.t with type 'a TV3.t = 'a T3.t with type 'a TV4.t = 'a T4.t with type 'a TV5.t = 'a T5.t with type 'a TV6.t = 'a T6.t with type 'a TV7.t = 'a T7.t
+module T8 (T1 : USERTYPE) (T2 : USERTYPE) (T3 : USERTYPE) (T4 : USERTYPE) (T5 : USERTYPE) (T6 : USERTYPE) (T7 : USERTYPE) (T8 : USERTYPE)  : COMBINED_TYPE
+ with type 'a TV1.t = 'a T1.t with type 'a TV2.t = 'a T2.t with type 'a TV3.t = 'a T3.t with type 'a TV4.t = 'a T4.t with type 'a TV5.t = 'a T5.t with type 'a TV6.t = 'a T6.t with type 'a TV7.t = 'a T7.t with type 'a TV8.t = 'a T8.t
+module T9 (T1 : USERTYPE) (T2 : USERTYPE) (T3 : USERTYPE) (T4 : USERTYPE) (T5 : USERTYPE) (T6 : USERTYPE) (T7 : USERTYPE) (T8 : USERTYPE) (T9 : USERTYPE)  : COMBINED_TYPE
+ with type 'a TV1.t = 'a T1.t with type 'a TV2.t = 'a T2.t with type 'a TV3.t = 'a T3.t with type 'a TV4.t = 'a T4.t with type 'a TV5.t = 'a T5.t with type 'a TV6.t = 'a T6.t with type 'a TV7.t = 'a T7.t with type 'a TV8.t = 'a T8.t with type 'a TV9.t = 'a T9.t
