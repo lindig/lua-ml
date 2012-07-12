@@ -26,7 +26,7 @@ module type S = sig
   type value = Value.value
   exception Error of string
   type compiled = unit -> value list
-  val compile : srcdbg:(Srcmap.map * bool) -> Ast.chunk list -> state -> compiled
+  val compile : srcdbg:(Luasrcmap.map * bool) -> Ast.chunk list -> state -> compiled
   type startup_code = (string -> unit) -> unit
   val pre_mk  : unit -> state * startup_code (* produce a fresh, initialized state *)
   val error   : string -> 'a   (* error fallback *)
@@ -434,7 +434,7 @@ temporaries.
 An extended continuation, which is used only in the case that the
 number of values used is not known until runtime, also takes a list of
 ``extra results'' (every result beyond the first).
-<<compiler ((std))>>=
+<<compiler>>=
 type a = A of a  (* used in place of type variable in type constraints *)
 type 'a cont  = V.value array -> 'a  (* for exp1 *)
 type 'a xcont = V.value list -> V.value array -> 'a  (* for exp, explist *)
@@ -671,7 +671,7 @@ block.
 \nwaddbox{explist : (int -> unit) -> (string -> var) -> A.exp list -> int -> a xcont -> a cont}
 \nwaddbox{block   : string list -> A.block -> 'a cont -> (value list -> 'a) -> 'a cont}
 \deeperbox{48pt}
-<<compiler ((std))>>=
+<<compiler>>=
 <<old debugging code>>
 let block_compiler srcmap g = 
   <<definitions of [[exp]], [[explist]], and friends>> in
@@ -707,7 +707,7 @@ let rec stmt rho s (theta: 'a cont)  (ret:value list -> 'a) = match s with
   | A.Stmt' (charpos, s) ->
       if debug then
         (* might make interesting example for paper *)
-        let where = Srcmap.location srcmap charpos in
+        let where = Luasrcmap.location srcmap charpos in
         let restore = ref (fun () -> ()) in  (* will restore currentloc *)
         let theta' l = (!restore(); theta l) in
         let ret' ans = (!restore(); ret ans) in
@@ -900,9 +900,9 @@ initializes the array with the values of the actual parameters,
 then applies body continuation to the state to get the answer.
 We don't have to maintain the stack because that is done in function
 application above.
-\nwaddbox{lambda : Srcmap.map * bool -> Srcmap.location -> string list -> bool -> A.block -> state -> V.srcloc * V.func}
+\nwaddbox{lambda : Luasrcmap.map * bool -> Luasrcmap.location -> string list -> bool -> A.block -> state -> V.srcloc * V.func}
 \deeperbox{14pt}
-<<compiler ((std))>>=
+<<compiler>>=
 let value_list = V.list V.value
 let lambda (src, debug) (file, line, col) args varargs body state =
   let rho = let args' = List.rev args in if varargs then "arg" :: args' else args' in
@@ -924,23 +924,23 @@ let lambda (src, debug) (file, line, col) args varargs body state =
 @ 
 Chunk compilation is not too exciting.
 We have a statement or a function.
-<<compiler ((std))>>=
+<<compiler>>=
 let func (info, f) = V.Function (info, f)
 let chunk ((smap, dbg) as srcdbg) block rho g = function
   | A.Debug _ -> assert false (* must never get here *)
   | A.Statement s -> block rho [s]
   | A.Fundef (pos, f, args, varargs, body) ->
-      let v = func (lambda srcdbg (Srcmap.location smap pos) args varargs body g) in
+      let v = func (lambda srcdbg (Luasrcmap.location smap pos) args varargs body g) in
       block rho [A.Stmt'(pos, A.Assign ([f], [A.Lit v]))]
   | A.Methdef (pos, obj, meth, args, varargs, body) ->
       let args = "self" :: args in
-      let v = func (lambda srcdbg (Srcmap.location smap pos) args varargs body g) in
+      let v = func (lambda srcdbg (Luasrcmap.location smap pos) args varargs body g) in
       block rho [A.Stmt'(pos, A.Assign ([A.Lindex (obj, A.Lit (V.String meth))],
                                         [A.Lit v]))]
 @ 
 Compiling a list of chunks is a lot like compiling a function, except
 we also have to keep track of whether debugging is turned on.
-<<compiler ((std))>>=
+<<compiler>>=
 let extendchunk rho = function
   | A.Statement s -> extend rho s
   | _ -> rho
@@ -968,7 +968,7 @@ let ret = A.Return ([nil; three])
 
 let test_state = V.state ()
 
-let bogusmap = Srcmap.mk ()
+let bogusmap = Luasrcmap.mk ()
 let stmts l = compile ~srcdbg:(bogusmap, false) (List.map (fun s -> A.Statement s) l)
 
 let num n = A.Lit (V.Number (float n))

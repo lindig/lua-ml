@@ -36,10 +36,10 @@ module type VALUE = sig
   and state = { globals : table
               ; fallbacks : (string, value) Hashtbl.t
               ; mutable callstack : activation list
-              ; mutable currentloc : Srcmap.location option (* supersedes top of stack *)
+              ; mutable currentloc : Luasrcmap.location option (* supersedes top of stack *)
               ; startup : initstate
               }
-  and activation = srcloc * Srcmap.location option
+  and activation = srcloc * Luasrcmap.location option
 
   val caml_func : func -> value (* each result unique *)
   val lua_func  : file:string -> linedefined:int -> func -> value
@@ -454,7 +454,7 @@ module type EVALUATOR = sig
   type value = Value.value
   exception Error of string
   type compiled = unit -> value list
-  val compile : srcdbg:(Srcmap.map * bool) -> Ast.chunk list -> state -> compiled
+  val compile : srcdbg:(Luasrcmap.map * bool) -> Ast.chunk list -> state -> compiled
   type startup_code = (string -> unit) -> unit
   val pre_mk  : unit -> state * startup_code (* produce a fresh, initialized state *)
   val error   : string -> 'a    (* error fallback *)

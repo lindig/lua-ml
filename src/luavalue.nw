@@ -44,10 +44,10 @@ module type S = sig
   and state = { globals : table
               ; fallbacks : (string, value) Hashtbl.t
               ; mutable callstack : activation list
-              ; mutable currentloc : Srcmap.location option (* supersedes top of stack *)
+              ; mutable currentloc : Luasrcmap.location option (* supersedes top of stack *)
               ; startup : initstate
               }
-  and activation = srcloc * Srcmap.location option
+  and activation = srcloc * Luasrcmap.location option
 
   val caml_func : func -> value (* each result unique *)
   val lua_func  : file:string -> linedefined:int -> func -> value
@@ -244,12 +244,12 @@ and userdata  = value userdata'
 and state = { globals : table
             ; fallbacks : (string, value) Hashtbl.t
             ; mutable callstack : activation list
-            ; mutable currentloc : Srcmap.location option (* supersedes top of stack *)
+            ; mutable currentloc : Luasrcmap.location option (* supersedes top of stack *)
             ; startup : initstate
             }
 and initstate =
   { mutable init_strings : (string -> unit) -> unit; mutable initialized : bool }
-and activation = srcloc * Srcmap.location option
+and activation = srcloc * Luasrcmap.location option
 @ 
 We need suitable equality.
 <<value toplevel>>=
@@ -528,9 +528,9 @@ let results (a_to_values : 'a -> value list) (a_of_values : value list -> 'a) =
     is = (function [] -> true | _ :: _ -> false)
   } 
 
-let (<<) f g = fun x -> f (g x)
+let (@<<) f g = fun x -> f (g x)
 
-let result r = results (fun v -> [r.embed v]) (r.project << take1)
+let result r = results (fun v -> [r.embed v]) (r.project @<< take1)
 let resultvs = results (fun l -> l) (fun l -> l)
 let resultpair a b =
   let em (x, y) = [a.embed x; b.embed y] in
@@ -544,7 +544,7 @@ let resultpair a b =
 
 (* other possibilities not exposed in interface *)
 let result2 r1 r2 = results (fun (v1, v2) -> [r1.embed v1; r2.embed v2])
-                            ((fun (l1, l2) -> r1.project l1, r2.project l2) << take2)
+                            ((fun (l1, l2) -> r1.project l1, r2.project l2) @<< take2)
 let runit =
   results (fun () -> []) 
           (function [] -> () | h :: _ -> raise (Projection (h, "unit result")))

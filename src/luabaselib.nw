@@ -88,8 +88,8 @@ end
 <<toplevel>>=
 let lex map buf = Luascanner.token buf map
 let do_lexbuf ~sourcename:filename g buf =
-  let map = Srcmap.mk () in
-  let _ = Srcmap.sync map 0 (filename, 1, 1) in
+  let map = Luasrcmap.mk () in
+  let _ = Luasrcmap.sync map 0 (filename, 1, 1) in
   try
     let chunks = P.chunks (lex map) buf in
     let pgm = I.compile ~srcdbg:(map, false) chunks g in
@@ -98,7 +98,7 @@ let do_lexbuf ~sourcename:filename g buf =
     | answers -> answers
   with
   | Parsing.Parse_error ->
-      let file, line, _ = Srcmap.last map in begin
+      let file, line, _ = Luasrcmap.last map in begin
         prerr_string file;
         prerr_string ", line ";
         prerr_int line;

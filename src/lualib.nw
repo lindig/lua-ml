@@ -531,10 +531,10 @@ module Lift (T : COMBINED_TYPE) (View : TYPEVIEW with type 'a t = 'a T.t) :
 This Icon code was used to generate C1 through C9
 <<lspecl.icn>>=
 procedure main()
-  write("<<similar specifications for [[C1]] to [[C9]]>>=")
+  write("@<<similar specifications for [[C1]] to [[C9]]>>=")
   every spec (1 to 9)
   write("@")
-  write("<<[[Combine]] contents>>=")
+  write("@<<[[Combine]] contents>>=")
   every def (1 to 9)
 end
  

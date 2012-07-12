@@ -59,12 +59,12 @@ module MakeStandard : MAKER
 
 
 %left AND OR
-%left EQ NE '>' '<' LE GE
+%left EQ NE GT LT LE GE
 %left CONC
-%left '+' '-'
-%left '*' '/'
+%left PLUS MINUS
+%left STAR SLASH
 %left UNARY NOT
-%right '^'
+%right HAT
 
 
 %% /* beginning of rules section */
@@ -80,16 +80,16 @@ chunklist : /* empty */        { [] }
 function_     : FUNCTION funcname body  { $2 $3 (Parsing.symbol_start()) };
 
 funcname  : var             { fun ((args, v), ss) w -> A.Fundef (w, $1, args, v, ss) }
-	  | varexp ':' NAME { fun ((args, v), ss) w -> A.Methdef (w, $1, $3, args, v, ss) }
+	  | varexp COLON NAME { fun ((args, v), ss) w -> A.Methdef (w, $1, $3, args, v, ss) }
           ;
 
-body :  '(' parlist ')' block END { ($2, $4 ) } ;
+body :  LPAR parlist RPAR block END { ($2, $4 ) } ;
 
 statlist : /* empty */         { [] }
 	 | statlist stat sc    { $1 @ [$2] }
 	 ;
 
-sc	 : /* empty */ { () } | ';' { () } ;
+sc	 : /* empty */ { () } | SEMI { () } ;
 
 stat   : stat_ { A.Stmt' (Parsing.symbol_start (), $1) }
 stat_  : IF expr1 THEN block elsepart END { let (a, e) = $5 in A.If ($2, $4, a, e) }
@@ -99,7 +99,7 @@ stat_  : IF expr1 THEN block elsepart END { let (a, e) = $5 in A.If ($2, $4, a, 
   */
        | WHILE  expr1 DO block END  { A.WhileDo ($2, $4) }
        | REPEAT block UNTIL expr1   { A.RepeatUntil ($2, $4) }
-       | varlist1 '=' exprlist1     { A.Assign ($1, $3) }
+       | varlist1 GETS exprlist1     { A.Assign ($1, $3) }
        | functioncall               { A.Callstmt $1 }
        | LOCAL localdeclist decinit { A.Local ($2, $3) }
 
@@ -115,20 +115,20 @@ ret	: /* empty */          { [] }
 
 expr1	 : expr { $1 } ;
 				
-expr :  '(' expr ')'  { $2 }
+expr :  LPAR expr RPAR  { $2 }
      |  expr1 EQ  expr1	{ A.Binop ($1, A.Eq, $3) }
-     |	expr1 '<' expr1	{ A.Binop ($1, A.Lt, $3) }
-     |	expr1 '>' expr1	{ A.Binop ($1, A.Gt, $3) }
+     |	expr1 LT expr1	{ A.Binop ($1, A.Lt, $3) }
+     |	expr1 GT expr1	{ A.Binop ($1, A.Gt, $3) }
      |	expr1 NE  expr1	{ A.Binop ($1, A.Ne, $3) }
      |	expr1 LE  expr1	{ A.Binop ($1, A.Le, $3) }
      |	expr1 GE  expr1	{ A.Binop ($1, A.Ge, $3) }
-     |	expr1 '+' expr1 { A.Binop ($1, A.Plus,  $3) }
-     |	expr1 '-' expr1 { A.Binop ($1, A.Minus, $3) }
-     |	expr1 '*' expr1 { A.Binop ($1, A.Times, $3) }
-     |	expr1 '/' expr1 { A.Binop ($1, A.Div,   $3) }
-     |	expr1 '^' expr1 { A.Binop ($1, A.Pow,   $3) }
+     |	expr1 PLUS expr1 { A.Binop ($1, A.Plus,  $3) }
+     |	expr1 MINUS expr1 { A.Binop ($1, A.Minus, $3) }
+     |	expr1 STAR expr1 { A.Binop ($1, A.Times, $3) }
+     |	expr1 SLASH expr1 { A.Binop ($1, A.Div,   $3) }
+     |	expr1 HAT expr1 { A.Binop ($1, A.Pow,   $3) }
      |	expr1 CONC expr1 { A.Binop ($1, A.Concat, $3) }
-     |	'-' expr1 %prec UNARY	{ A.Unop (A.Minus, $2) }
+     |	MINUS expr1 %prec UNARY	{ A.Unop (A.Minus, $2) }
      | table                    { $1 }
      |  varexp          { $1 }
      |  NUMBER          { A.Lit (A.Value.Number $1) }
@@ -140,15 +140,15 @@ expr :  '(' expr ')'  { $2 }
      |	expr1 OR  expr1 { A.Binop ($1, A.Or,  $3) }
      ;
 
-table : '{' fieldlist '}' { let (l, b) = $2 in A.Table (l, b) } ;
+table : LBRA fieldlist RBRA { let (l, b) = $2 in A.Table (l, b) } ;
 
 functioncall : funcvalue funcParams { $1 $2 } ;
 
 funcvalue    : varexp { fun args -> A.Funcall ($1, args) }
-	     | varexp ':' NAME  { fun args -> A.Methcall ($1, $3, args) }
+	     | varexp COLON NAME  { fun args -> A.Methcall ($1, $3, args) }
 	     ;
 
-funcParams :	'(' exprlist ')' { $2 } 
+funcParams :	LPAR exprlist RPAR { $2 } 
   	|	table  { [$1] }
 	;
 
@@ -157,7 +157,7 @@ exprlist  :	/* empty */		{ [] }
 	  ;
 		
 exprlist1 :  expr	{ [$1] }
-	  |  exprlist1 ',' expr { $1 @ [$3] }
+	  |  exprlist1 COMMA expr { $1 @ [$3] }
 	  ;
 
 parlist   :	/* empty */ { ([], false) }
@@ -166,11 +166,11 @@ parlist   :	/* empty */ { ([], false) }
 	  ;
 		
 parlist1 :	par		  { [$1] }
-	  |	parlist1 ',' par  { $1 @ [$3] }
+	  |	parlist1 COMMA par  { $1 @ [$3] }
 	  ;
 
 opt_dots  : /* empty */   { false }
-          | ','  DOTS     { true  }
+          | COMMA  DOTS     { true  }
 
 par : NAME	{ $1 }
     ;
@@ -180,11 +180,11 @@ fieldlist  : lfieldlist semicolonpart { ($1, $2) }
 	   ;
 
 semicolonpart : /* empty */    { [] }
-	      | ';' ffieldlist { $2 }
+	      | SEMI ffieldlist { $2 }
 	      ;
 
 lastcomma  : /* empty */   { () }
-	   | ','           { () }
+	   | COMMA           { () }
 	   ;
 
 ffieldlist  : /* empty */ { [] }
@@ -192,24 +192,24 @@ ffieldlist  : /* empty */ { [] }
             ;   
 
 ffieldlist1 : ffield			{ [$1] }
-	   | ffieldlist1 ',' ffield	{ $1 @ [$3] }
-ffield      : NAME '=' expr1  { ($1, $3) } ;
+	   | ffieldlist1 COMMA ffield	{ $1 @ [$3] }
+ffield      : NAME GETS expr1  { ($1, $3) } ;
 
 lfieldlist  : /* empty */ { [] }
 	    | lfieldlist1 lastcomma { $1 }
 	    ;
 
 lfieldlist1 : expr1  {[$1]}
-	    | lfieldlist1 ',' expr1 { $1 @ [$3] }
+	    | lfieldlist1 COMMA expr1 { $1 @ [$3] }
             ;
 
 varlist1  :	var  {[$1]}
-	  |	varlist1 ',' var	{ $1 @ [$3] }
+	  |	varlist1 COMMA var	{ $1 @ [$3] }
 	  ;
 		
 var	  :	singlevar { A.Lvar $1 }
-	  |	varexp '[' expr1 ']'  { A.Lindex ($1, $3) }
-	  |	varexp '.' NAME       { A.Lindex ($1, A.Lit (A.Value.String $3)) }
+	  |	varexp LSQ expr1 RSQ  { A.Lindex ($1, $3) }
+	  |	varexp DOT NAME       { A.Lindex ($1, A.Lit (A.Value.String $3)) }
 	  ;
 		
 singlevar :	NAME   { $1 }
@@ -219,16 +219,17 @@ varexp	: var { match $1 with A.Lvar x -> A.Var x | A.Lindex (t, k) -> A.Index (t
 	;
 	  
 localdeclist  : NAME { [$1] }
-     	  | localdeclist ',' NAME { $1 @ [$3] }
+     	  | localdeclist COMMA NAME { $1 @ [$3] }
 	  ;
 		
 decinit	  : /* empty */  { [] }
-	  | '=' exprlist1 { $2 }
+	  | GETS exprlist1 { $2 }
 	  ;
 	  
 %%
 
 end
+
 @
 
 % ------------------------------------------------------------------ 
@@ -236,14 +237,14 @@ end
 % ------------------------------------------------------------------ 
 
 The entry point of the scanner is [[token]]:
-$$[[val token : Lexing.lexbuf -> Srcmap.map -> Parser.token]]$$
+$$[[val token : Lexing.lexbuf -> Luasrcmap.map -> Parser.token]]$$
 
 The second argument is a source map, that allows to reconstruct
 filename, line, and column from a character offset. The first action
-after such a map was created using [[Srcmap.mk ()]] should be a call to
-[[Srcmap.sync map 0 (filename,1,1)]] to establish a sync-point for the
+after such a map was created using [[Luasrcmap.mk ()]] should be a call to
+[[Luasrcmap.sync map 0 (filename,1,1)]] to establish a sync-point for the
 first character in the scanned character stream. See the documentation
-of [[Srcmap]] for details.
+of [[Luasrcmap]] for details.
 
 
 <<luascanner.mll>>=
@@ -257,10 +258,10 @@ of [[Srcmap]] for details.
     (* called at *every* newline in the source code *)
     let nl lexbuf map =
         let next = (Lexing.lexeme_start lexbuf) + 1     in
-            Srcmap.nl map next
+            Luasrcmap.nl map next
             
     let location lexbuf map =
-        Srcmap.location map (Lexing.lexeme_start lexbuf)
+        Luasrcmap.location map (Lexing.lexeme_start lexbuf)
          
     let get         = Lexing.lexeme
     let getchar     = Lexing.lexeme_char
@@ -309,7 +310,7 @@ let id          = (alpha | misc) (alpha | misc | digit)*
 let ws          = [' ' '\t' '\r'] (* newline gets extra treatment! *)
 let nl          = '\n'
 
-(* map is a Srcmap.map value that is used to record all newlines
+(* map is a Luasrcmap.map value that is used to record all newlines
    such that every character position can be translated into
    a file/line/column triple *)
 
@@ -429,7 +430,7 @@ and file_pragma = parse
                     let file = get lexbuf in
                     let loc  = (file, 1, 1) in
                     let pos  = Lexing.lexeme_start lexbuf in 
-                        ( Srcmap.sync map pos loc
+                        ( Luasrcmap.sync map pos loc
                         ; token lexbuf map
                         )
                 }
@@ -447,8 +448,8 @@ and line_pragma = parse
                     let line    = int_of_string s in
                     let line    = line - 1 in   (* fencepost error *)
                     let pos     = Lexing.lexeme_start lexbuf in 
-                    let (f,l,c) = Srcmap.last map in
-                        ( Srcmap.sync map pos (f,line,1)
+                    let (f,l,c) = Luasrcmap.last map in
+                        ( Luasrcmap.sync map pos (f,line,1)
                         ; token lexbuf map
                         )
                 }        
