@@ -13,8 +13,6 @@ LP 	= 	lipsum
 # Code that must be tangled from literate programs
 
 MLSRC =\
-		bench.ml	\
-		log.mli         \
 		lua.ml          \
 		lua.mli         \
 		luaast.ml       \
@@ -46,8 +44,6 @@ MLSRC =\
 		luastrlib.mli   \
 		luavalue.ml     \
 		luavalue.mli    \
-		main.ml 	\
-	        log.ml          \
 
 		
 all:		$(MLSRC)
@@ -82,10 +78,10 @@ luafloat.mll:   luavalue.nw
 luaparsex.mly: 	luasyntax.nw
 		$(LP) tangle luaparser.mly $< > $@
 
-luainterp.ml: 	stdluainterp.nw
+luainterp.ml: 	luastdinterp.nw
 		$(LP) tangle $@ $< > $@
 
-luainterp.mli: 	stdluainterp.nw
+luainterp.mli: 	luastdinterp.nw
 		$(LP) tangle $@ $< > $@
 				
 #
