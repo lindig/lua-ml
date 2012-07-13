@@ -38,16 +38,17 @@ extensible by the user. Rather than designing your own, Lua provides a well
 designed language for this purpose.
 
 To make an application truly extensible it needs to be designed for that. This
-means that the most important data types and functions are accessible from
-the Lua side such that they can be manipulated by the user. How to do this
-best is currently beyond the scope of this documentation. However, here are two examples that use an earlier version of Lua-ML:
+means that the most important data types and functions are accessible from the
+Lua side such that they can be manipulated by the user. How to do this best is
+currently beyond the scope of this documentation. However, here are two
+examples that use an earlier version of Lua-ML:
 
 * [Quesy Test Code Generator](http://code.google.com/p/quest-tester/)
 * [C-- Compiler](http://www.cminusminus.org/)
 
 ## History and Raison d'être
 
-Lua-ML was developed as part of the [C-- compiler](http://www.cminusminus.orf)
+Lua-ML was developed as part of the [C-- compiler](http://www.cminusminus.org)
 project and is part of its source code. The C-- compiler uses 
 an elaborate build process which made it difficult to build just the Lua-ML
 library and a sample applications. This is an attempt to untangle Lua-ML from
@@ -58,6 +59,16 @@ Lua-ML is originally implemented as a literate program with the
 distribution uses a simpler literate programming system
 [Lipsum](https://github.com/lindig/lipsum.git) that is part of this
 distribution.
+
+## Literate Programming
+
+Lua-ML is implemented as a literate program. A literate program is a document
+that contains documentation and source code arranged in a way that supports
+its understanding and further development. For compilation, the source code
+must be extracted from the literate program. The original Lua-ML
+implementation used [Noweb](http://www.cs.tufts.edu/~nr/noweb/) and this one
+employs [Lipsum](https://github.com/lindig/lipsum.git). Lipsum will be
+integrated as a Git submodule to make building Lua-ML easier.
 
 ## Authors
 
