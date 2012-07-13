@@ -1,0 +1,3 @@
+[submodule "lipsum"]
+	path = lipsum
+	url = https://github.com/lindig/lipsum.git
