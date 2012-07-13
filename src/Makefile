@@ -5,6 +5,7 @@
 # *.nw using OCamlBuild. This requires a custum plugin but I don't know
 # how to do this yet.
 #
+# Lipsum is available from https://github.com/lindig/lipsum.git
 
 OCB 	= 	ocamlbuild
 OCY 	= 	ocamlyacc
