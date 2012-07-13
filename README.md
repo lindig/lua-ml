@@ -21,7 +21,7 @@ generator has probably too many configurations as that these could be handled
 by command-line options alone. This leads to the addition of configuration
 files which typically permit to assign strings, numbers and booleans to names.
 As the project matures, more flexibility is needed, for example some kind of
-name space to manage the ever increasing number of options. At this point most
+name space to manage the ever increasing number of options. At this point
 the design of most configuration files starts to break as it was never
 designed for this.
 
@@ -41,22 +41,29 @@ To make an application truly extensible it needs to be designed for that. This
 means that the most important data types and functions are accessible from the
 Lua side such that they can be manipulated by the user. How to do this best is
 currently beyond the scope of this documentation. However, here are two
-examples that use an earlier version of Lua-ML:
+examples that use an earlier version of Lua-ML and that you could study:
 
 * [Quesy Test Code Generator](http://code.google.com/p/quest-tester/)
 * [C-- Compiler](http://www.cminusminus.org/)
 
+## Example
+
+For an example application, take a look at `luaclient.nw` in the `src/`
+directory. This example is built by the `Makefile` found there.
+
+
 ## History and Raison d'être
 
 Lua-ML was developed as part of the [C-- compiler](http://www.cminusminus.org)
-project and is part of its source code. The C-- compiler uses 
-an elaborate build process which made it difficult to build just the Lua-ML
-library and a sample applications. This is an attempt to untangle Lua-ML from
-its C-- legacy to make it more easily available.
+project and is part of its source code. The C-- compiler uses an elaborate
+build process which makes it difficult to build just the Lua-ML library and a
+sample application. This is an attempt to untangle Lua-ML from its C-- legacy
+to make it more easily available.
 
 Lua-ML is originally implemented as a literate program with the
-[Noweb](http://www.cs.tufts.edu/~nr/noweb/) literate programming system. This
-distribution uses a simpler literate programming system
+[Noweb](http://www.cs.tufts.edu/~nr/noweb/) literate programming system by
+Norman Ramsey who is also the author of Lua-ML. This distribution uses a
+simpler literate programming system
 [Lipsum](https://github.com/lindig/lipsum.git) that is part of this
 distribution.
 
@@ -74,7 +81,7 @@ integrated as a Git submodule to make building Lua-ML easier.
 
 The Lua-ML interpreter was written by Norman Ramsey <nr@cs.tufts.edu>. It was
 originally part of the C-- project at http://www.cminusminus.org/ and brought
-to GitHub by Christian Lindig <lindig@gmail.com> who also work on the C--
+to GitHub by Christian Lindig <lindig@gmail.com> who also worked on the C--
 project 2000 to 2002.
 
 ## Copyright
