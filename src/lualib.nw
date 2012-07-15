@@ -555,10 +555,10 @@ end
 This Icon code generated [[T1]] through [[T9]].
 <<tspecl.icn>>=
 procedure main()
-  write("@<<similar specifications for [[T1]] to [[T9]]@>>=")
+  write("@<<similar specifications for [[T1]] to [[T9]]>>=")
   every spec (1 to 9)
   write("@")
-  write("@<<definitions of [[Combine.T1]] through [[Combine.T9]]@>>=")
+  write("@<<definitions of [[Combine.T1]] through [[Combine.T9]]>>=")
   every def (1 to 9)
 end
  

@@ -43,13 +43,12 @@ Lua side such that they can be manipulated by the user. How to do this best is
 currently beyond the scope of this documentation. However, here are two
 examples that use an earlier version of Lua-ML and that you could study:
 
-* [Quesy Test Code Generator](http://code.google.com/p/quest-tester/)
+* [Quest Test Code Generator](http://code.google.com/p/quest-tester/)
 * [C-- Compiler](http://www.cminusminus.org/)
 
 ## Example
 
-For an example application, take a look at `luaclient.nw` in the `src/`
-directory. This example is built by the `Makefile` found there.
+For an example application, take a look at `luaclient.nw` in the `example`.
 
 
 ## History and Raison d'être
@@ -74,8 +73,12 @@ that contains documentation and source code arranged in a way that supports
 its understanding and further development. For compilation, the source code
 must be extracted from the literate program. The original Lua-ML
 implementation used [Noweb](http://www.cs.tufts.edu/~nr/noweb/) and this one
-employs [Lipsum](https://github.com/lindig/lipsum.git). Lipsum will be
-integrated as a Git submodule to make building Lua-ML easier.
+employs [Lipsum](https://github.com/lindig/lipsum.git). 
+
+Lipsum is integrated as a Git submodule and the build process builds it first.
+You need to to tell Git to pull it initially:
+
+        git submodule init
 
 ## Authors
 

@@ -7,9 +7,8 @@
 #
 # Lipsum is available from https://github.com/lindig/lipsum.git
 
-OCB 	= 	ocamlbuild
 OCY 	= 	ocamlyacc
-LP 	= 	lipsum
+LP 	= 	../lipsum/lipsum
 
 # Code that must be tangled from literate programs
 
@@ -22,7 +21,6 @@ MLSRC =\
 		luabaselib.mli  \
 		luacamllib.ml   \
 		luacamllib.mli  \
-		luaclient.ml 	\
 		luafloat.mll	\
 		luahash.ml      \
 		luahash.mli     \
@@ -47,14 +45,15 @@ MLSRC =\
 		luavalue.mli    \
 
 		
-all:		$(MLSRC)
-		$(OCB) lua-std.cmxa
-		$(OCB) luaclient.native
+all:		$(MLSRC) lipsum
+
+lipsum: 	../lipsum/lipsum
+		@[ -x $< ] || (echo "build the lipsum tool first" && false)
+
 
 clean:
 		rm -f $(MLSRC)
 		rm -f luaparsex.mly luaparsex.ml luaparsex.mli
-		$(OCB) -clean
 		
 # rules to extract code from literate programs
 
