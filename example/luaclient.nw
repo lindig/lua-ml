@@ -62,7 +62,6 @@ control to the newly created interpreter.
 
 let main () =
     let argv    = Array.to_list Sys.argv in
-    let this    = Filename.basename (List.hd argv) in
     let args    = List.tl argv in
     let state   = I.mk () in (* fresh Lua interpreter *)
     let eval e  = ignore (I.dostring state e) in
