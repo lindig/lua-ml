@@ -11,5 +11,7 @@ clean:
 %.ml: 		%.nw
 		$(LP) tangle $@ $< > $@
 
-lipsum: 	../lipsum/lipsum
-		@[ -x $< ] || (echo "build the lipsum tool first" && false)
+lipsum: 	FORCE
+		@[ -x $(LP) ] || (echo "build the lipsum tool first" && false)
+		
+FORCE:

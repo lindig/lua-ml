@@ -47,13 +47,14 @@ MLSRC =\
 		
 all:		$(MLSRC) lipsum
 
-lipsum: 	../lipsum/lipsum
-		@[ -x $< ] || (echo "build the lipsum tool first" && false)
-
+lipsum: 	FORCE
+		@[ -x $(LP) ] || (echo "build the lipsum tool first" && false)
 
 clean:
 		rm -f $(MLSRC)
 		rm -f luaparsex.mly luaparsex.ml luaparsex.mli
+
+FORCE:
 		
 # rules to extract code from literate programs
 
