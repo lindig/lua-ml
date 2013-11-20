@@ -1,5 +1,6 @@
 
 OCB = ocamlbuild
+LIPSUM  = https://github.com/lindig/lipsum.git
 
 all:
 	make -C lipsum all
@@ -13,3 +14,9 @@ clean:
 	make -C src clean
 	make -C example clean
 	$(OCB) -clean
+
+update:
+	git subtree pull --prefix lipsum $(LIPSUM) master --squash	
+
+init: 
+	git subtree add --prefix lipsum $(LIPSUM) master --squash	
