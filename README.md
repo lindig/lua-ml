@@ -1,8 +1,7 @@
-
 # Lua-ML - an embeddable Lua 2.5 interpreter implemented in OCaml
 
 Lua-ML is an implementation of the [Lua](http://www.lua.org) 2.5 programming
-language in [Objective Caml](http://caml.inria.fr). Just like the original
+language in [OCaml](http://ocaml.org). Just like the original
 Lua implementation in C, it is designed for being embedded into applications
 as an extension language. In this case, for applications implemented in
 Objective Caml.
