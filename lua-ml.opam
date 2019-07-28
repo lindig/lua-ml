@@ -1,0 +1,20 @@
+opam-version: "2.0"
+name: "lua-ml"
+version: "~dev"
+synopsis: "An embeddable Lua 2.5 interpreter implemented in OCaml"
+maintainer: "Christian Lindig <lindig@gmail.com>"
+authors: [
+  "Norman Ramsey <nr@cs.tufts.edu>"
+  "Christian Lindig <lindig@gmail.com>"
+]
+license: "CC0"
+homepage: "https://github.com/lindig/lua-ml"
+bug-reports: "https://github.com/lindig/lua-ml/issues"
+depends: [
+  "lipsum"
+  "ocaml"
+  "ocamlbuild"
+  "ocamlfind"
+]
+build:
+  [ make "lib" ]

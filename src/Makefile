@@ -8,7 +8,7 @@
 # Lipsum is available from https://github.com/lindig/lipsum.git
 
 OCY 	= 	ocamlyacc
-LP 	= 	../lipsum/lipsum
+LP 	= 	lipsum
 
 # Code that must be tangled from literate programs
 
@@ -44,23 +44,20 @@ MLSRC =\
 		luavalue.ml     \
 		luavalue.mli    \
 
-		
-all:		$(MLSRC) lipsum
 
-lipsum: 	FORCE
-		@[ -x $(LP) ] || (echo "build the lipsum tool first" && false)
+all:		$(MLSRC)
 
 clean:
 		rm -f $(MLSRC)
 		rm -f luaparsex.mly luaparsex.ml luaparsex.mli
 
 FORCE:
-		
+
 # rules to extract code from literate programs
 
 %.ml: 		%.nw
 		$(LP) tangle $@ $< > $@
-		
+
 %.mli: 		%.nw
 		$(LP) tangle $@ $< > $@
 
@@ -84,7 +81,7 @@ luainterp.ml: 	luastdinterp.nw
 
 luainterp.mli: 	luastdinterp.nw
 		$(LP) tangle $@ $< > $@
-				
+
 #
 # Ugly. To create luaparser.{ml,mli} we first build luaparsex.{ml,mli} 
 # and then modify the .mli file.
@@ -97,5 +94,3 @@ luaparser.ml luaparser.mli: luaparsex.mly
 		$(LP) tangle luaparser.mli luasyntax.nw ) > luaparser.mli
 		rm -f luaparsex.mli
 
-
-		

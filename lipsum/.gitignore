@@ -1,7 +1,0 @@
-*.byte
-_build
-lipsum.native
-lipsum.1
-lipsum
-
-/.DS_Store

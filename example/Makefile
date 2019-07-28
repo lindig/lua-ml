@@ -1,9 +1,9 @@
 
-LP 	= 	../lipsum/lipsum
+LP 	= 	lipsum
 
 MLSRC 	= luaclient.ml
 
-all: 		lipsum luaclient.ml
+all: 		luaclient.ml
 
 clean:
 		rm -f $(MLSRC)
@@ -11,7 +11,4 @@ clean:
 %.ml: 		%.nw
 		$(LP) tangle $@ $< > $@
 
-lipsum: 	FORCE
-		@[ -x $(LP) ] || (echo "build the lipsum tool first" && false)
-		
 FORCE:
