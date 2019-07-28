@@ -78,6 +78,5 @@ project 2000 to 2002.
 
 ## Copyright
 
-The source code for the Lua-ML interpreter is in the public domain except
-where noted otherwise.
-
+Lua-ML is distributed under the two-clause BSD license.
+See the LICENSE file for details.
