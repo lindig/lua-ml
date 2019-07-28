@@ -3,8 +3,7 @@
 Lua-ML is an implementation of the [Lua](http://www.lua.org) 2.5 programming
 language in [OCaml](http://ocaml.org). Just like the original
 Lua implementation in C, it is designed for being embedded into applications
-as an extension language. In this case, for applications implemented in
-Objective Caml.
+as an extension language. In this case, for applications implemented in OCaml.
 
 Lua is designed to extend applications written in C and its API is tailored to
 do that, using a stack-based design to pass values between C and Lua. Lua-ML
@@ -43,7 +42,7 @@ currently beyond the scope of this documentation. However, here are two
 examples that use an earlier version of Lua-ML and that you could study:
 
 * [Quest Test Code Generator](http://code.google.com/p/quest-tester/)
-* [C-- Compiler](http://www.cminusminus.org/)
+* [C-- Compiler](http://web.archive.org/web/20150501125322/http://www.cminusminus.org/)
 
 ## Example
 
@@ -52,18 +51,12 @@ For an example application, take a look at `luaclient.nw` in the `example`.
 
 ## History and Raison d'être
 
-Lua-ML was developed as part of the [C-- compiler](http://www.cminusminus.org)
+Lua-ML was developed as part of the [C-- compiler]
 project and is part of its source code. The C-- compiler uses an elaborate
 build process which makes it difficult to build just the Lua-ML library and a
 sample application. This is an attempt to untangle Lua-ML from its C-- legacy
 to make it more easily available.
 
-Lua-ML is originally implemented as a literate program with the
-[Noweb](http://www.cs.tufts.edu/~nr/noweb/) literate programming system by
-Norman Ramsey who is also the author of Lua-ML. This distribution uses a
-simpler literate programming system
-[Lipsum](https://github.com/lindig/lipsum.git) that is part of this
-distribution.
 
 ## Literate Programming
 
@@ -71,18 +64,15 @@ Lua-ML is implemented as a literate program. A literate program is a document
 that contains documentation and source code arranged in a way that supports
 its understanding and further development. For compilation, the source code
 must be extracted from the literate program. The original Lua-ML
-implementation used [Noweb](http://www.cs.tufts.edu/~nr/noweb/) and this one
-employs [Lipsum](https://github.com/lindig/lipsum.git). 
+implementation used [Noweb](http://www.cs.tufts.edu/~nr/noweb/), but this distribution
+employs a simpler system named [Lipsum](https://github.com/lindig/lipsum.git)
+that can be install via OPAM.
 
-Lipsum is integrated as a Git submodule and the build process builds it first.
-You need to to tell Git to pull it initially:
-
-        git submodule init
 
 ## Authors
 
 The Lua-ML interpreter was written by Norman Ramsey <nr@cs.tufts.edu>. It was
-originally part of the C-- project at http://www.cminusminus.org/ and brought
+originally part of the C-- project at [www.cminusminus.org](http://web.archive.org/web/20150501125322/http://www.cminusminus.org/) and brought
 to GitHub by Christian Lindig <lindig@gmail.com> who also worked on the C--
 project 2000 to 2002.
 
@@ -90,3 +80,4 @@ project 2000 to 2002.
 
 The source code for the Lua-ML interpreter is in the public domain except
 where noted otherwise.
+
