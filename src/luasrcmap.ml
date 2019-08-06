@@ -15,7 +15,7 @@ let size        =  2    (* small to test alloc *)
 let undefined   =  (0, ("undefined", -1, -1))    
 
 let mk () =
-    { points  = Array.create size undefined 
+    { points  = Array.make size undefined
     ; top     = 0
     ; files   = Hashtbl.create 17
     }    
@@ -25,7 +25,7 @@ let alloc srcmap =
         if   srcmap.top < length then 
             ()
         else 
-            let points' = Array.create length undefined in
+            let points' = Array.make length undefined in
                 srcmap.points <- Array.append srcmap.points points'
 let sync srcmap pos (file,line,col) =
     let _     = alloc srcmap in

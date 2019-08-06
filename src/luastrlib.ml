@@ -238,8 +238,8 @@ let find pat s =
                                | Some n -> min n maxlast in
       let len = last - start + 1 in
       invalid (String.sub s start) len)
-  ; "strlower", V.efunc (V.string **->> V.string) String.lowercase
-  ; "strupper", V.efunc (V.string **->> V.string) String.uppercase
+  ; "strlower", V.efunc (V.string **->> V.string) String.lowercase_ascii
+  ; "strupper", V.efunc (V.string **->> V.string) String.uppercase_ascii
   ; "strrep",   V.efunc (V.string **-> V.int **->> V.string)
                 (fun s n ->
                   if n < 0 then
