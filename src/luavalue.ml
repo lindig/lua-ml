@@ -5,15 +5,30 @@ module type S = sig
   type 'a userdata'
   type srcloc
   type initstate
-  type value
-    = Nil
+
+  module rec LuaValueBase : sig
+    type value =
+      Nil
     | Number   of float
     | String   of string
     | Function of srcloc * func
     | Userdata of userdata
     | Table    of table
+    and func  = value list -> value list
+    and table = value Luahash.t
+    and userdata  = value userdata'
+    val eq : value -> value -> bool
+  end 
+  and LuahashKey : sig
+    type t
+    val hash : t -> int
+    val equal : t -> t -> bool
+  end
+  and Luahash : Hashtbl.S with type key = LuaValueBase.value
+
+  type value = LuaValueBase.value
   and func  = value list -> value list (* can also side-effect state *)
-  and table = (value, value) Luahash.t
+  and table = value Luahash.t
   and userdata  = value userdata'
   and state = { globals : table
               ; fallbacks : (string, value) Hashtbl.t
@@ -41,6 +56,8 @@ module type S = sig
     val find   : table -> key:value -> value   (* returns Nil if not found *)
     val bind   : table -> key:value -> data:value -> unit
     val of_list : (string * value) list -> table
+    val next : value Luahash.t -> value -> (value * value)
+    val first : value Luahash.t -> value * value
   end
   exception Projection of value * string
   val projection : value -> string -> 'a
@@ -89,37 +106,72 @@ end
 module Make (U : USERDATA) : S with type 'a userdata'  = 'a U.t 
 = struct
   type 'a userdata'  = 'a U.t
-type srcloc = int * string * int (* unique id, filename, linedefined *)
-type value
-  = Nil
-  | Number   of float
-  | String   of string
-  | Function of srcloc * func
-  | Userdata of userdata
-  | Table    of table
-and func  = value list -> value list
-and table = (value, value) Luahash.t
-and userdata  = value userdata'
-and state = { globals : table
-            ; fallbacks : (string, value) Hashtbl.t
-            ; mutable callstack : activation list
-            ; mutable currentloc : Luasrcmap.location option (* supersedes top of stack *)
-            ; startup : initstate
-            }
-and initstate =
+  type srcloc = int * string * int (* unique id, filename, linedefined *)
+
+  module rec LuaValueBase : sig
+    type value =
+      Nil
+    | Number   of float
+    | String   of string
+    | Function of srcloc * func
+    | Userdata of userdata
+    | Table    of table
+    and func  = value list -> value list
+    and table = value Luahash.t
+    and userdata  = value userdata'
+    val eq : value -> value -> bool
+
+  end = struct
+    type value =
+      Nil
+    | Number   of float
+    | String   of string
+    | Function of srcloc * func
+    | Userdata of userdata
+    | Table    of table
+    and func  = value list -> value list
+    and table = value Luahash.t
+    and userdata  = value userdata'
+
+    let rec eq x y = match x, y with
+    | Nil,             Nil             -> true
+    | Number x,        Number y        -> x = y
+    | String x,        String y        -> x = y
+    | Userdata x,      Userdata y      -> U.eq eq x y
+    | Table x,         Table y         -> x == y
+    | Function ((x, _, _), _),
+      Function ((y, _, _), _) -> x = y
+    | _,               _               -> false
+
+  end
+  and LuahashKey : sig
+    type t
+    val hash : t -> int
+    val equal : t -> t -> bool
+  end = struct
+    type t = LuaValueBase.value
+    let hash = Hashtbl.hash
+    let equal = LuaValueBase.eq
+  end
+  and Luahash : Hashtbl.S with type key = LuaValueBase.value = Hashtbl.Make (LuahashKey)
+
+
+  include LuaValueBase 
+
+  type state = { globals : table
+              ; fallbacks : (string, value) Hashtbl.t
+              ; mutable callstack : activation list
+              ; mutable currentloc : Luasrcmap.location option (* supersedes top of stack *)
+              ; startup : initstate
+              }
+  and initstate =
   { mutable init_strings : (string -> unit) -> unit; mutable initialized : bool }
-and activation = srcloc * Luasrcmap.location option
-let rec eq x y = match x, y with
-| Nil,             Nil             -> true
-| Number x,        Number y        -> x = y
-| String x,        String y        -> x = y
-| Userdata x,      Userdata y      -> U.eq eq x y
-| Table x,         Table y         -> x == y
-| Function ((x, _, _), _), 
-           Function ((y, _, _), _) -> x = y
-| _,               _               -> false
+  and activation = srcloc * Luasrcmap.location option
+
+
 module Table = struct
-  let create = Luahash.create eq
+(*  open LuaValueBase *)
+  let create = Luahash.create
   let find t ~key:k = try Luahash.find t k with Not_found -> Nil
   let bind t ~key:k ~data:v =
     match v with
@@ -129,6 +181,27 @@ module Table = struct
     let t = create (List.length l) in
     let _ = List.iter (fun (k, v) -> bind t (String k) v) l in
     t
+
+  let next h key =
+    let rec aux hs key =
+      match hs () with
+      | Seq.Cons ((k, _), f) ->
+        if eq k key then begin
+          let n = f () in
+          match n with
+          | Seq.Cons ((k', v'), _) -> (k', v')
+          | Seq.Nil -> raise Not_found
+        end else aux f key
+      | Seq.Nil -> raise Not_found
+    in
+    let hash_seq = Luahash.to_seq h in
+    aux hash_seq key
+
+  let first h =
+    let hash_seq = Luahash.to_seq h in
+    match hash_seq () with
+    | Seq.Cons ((k, v), _) -> (k, v)
+    | Seq.Nil -> raise Not_found
 end
 
 let srcloc =
@@ -270,7 +343,7 @@ let list (ty : 'a map) =
   let untable (t:table) =
     let n = match Table.find t (String "n") with
     | Number x -> to_int x
-    | _ -> Luahash.population t  in
+    | _ -> Luahash.length t  in
     let rec elems i =
       if i > n then []
       else ty.project (Table.find t (Number (pervasive_float i))) :: elems (i + 1) in
@@ -288,8 +361,8 @@ let projectRecord ty v = match v with
 | Table t ->
     let rec addpairs (k, v) =
       (string.project v, ty.project v) ::
-      try addpairs (Luahash.next t k) with Not_found -> [] in
-    (try addpairs (Luahash.first t) with Not_found -> [])
+      try addpairs (Table.next t k) with Not_found -> [] in
+    (try addpairs (Table.first t) with Not_found -> [])
 | _ -> raise (Projection (v, "table (as record)"))
   
 let record ty =

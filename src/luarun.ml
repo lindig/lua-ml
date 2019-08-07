@@ -40,7 +40,7 @@ module Make (I : INTERP) = struct
   let _ = if !dumpstate then
     begin
       print_endline "final state: ";
-      Luahash.iter (fun k v -> print_string "  ";
+      V.Luahash.iter (fun k v -> print_string "  ";
         print_string (V.to_string k); print_string " |-> ";
         print_endline (V.to_string v)) state.V.globals
     end

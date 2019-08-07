@@ -10,7 +10,7 @@ let do_lexbuf ~sourcename:filename g buf =
     let chunks = P.chunks (lex map) buf in
     let pgm = I.compile ~srcdbg:(map, false) chunks g in
     match pgm () with
-    | [] -> [I.Value.String "executed without errors"]
+    | [] -> [I.Value.LuaValueBase.String "executed without errors"]
     | answers -> answers
   with
   | Parsing.Parse_error ->
@@ -41,7 +41,7 @@ let dofile g infile =
                      (do_lexbuf ~sourcename:infile g) (Lexing.from_channel f)
       in  (close(); answer)
     with e -> (close (); raise e)
-  with Sys_error msg -> [V.Nil; V.String ("System error: " ^ msg)]
+  with Sys_error msg -> [V.LuaValueBase.Nil; V.LuaValueBase.String ("System error: " ^ msg)]
 
   let ( **-> ) = V.( **-> )
   let ( **->> ) x y = x **-> V.result y
@@ -49,9 +49,9 @@ let dofile g infile =
   let next t key =
     let k, v =
       try match key with
-      | V.Nil -> Luahash.first t
-      | _   -> Luahash.next t key
-      with Not_found -> V.Nil, V.Nil
+      | V.LuaValueBase.Nil -> V.Table.first t
+      | _   -> V.Table.next t key
+      with Not_found -> V.LuaValueBase.Nil, V.LuaValueBase.Nil
     in [k; v]
 
   let objname g v =
@@ -59,7 +59,7 @@ let dofile g infile =
     let ss = match V.objname g v with
     | Some (V.Fallback n) -> "`" :: n :: "' fallback" :: tail
     | Some (V.Global n)   -> "function " :: n :: tail
-    | Some (V.Element (t, V.String n)) -> "function " :: t :: "." :: n :: tail
+    | Some (V.Element (t, V.LuaValueBase.String n)) -> "function " :: t :: "." :: n :: tail
     | Some (V.Element (t, v))    -> "function " :: t :: "[" :: V.to_string v :: "]" :: tail
     | None -> "unnamed " :: V.to_string v :: tail in
     String.concat "" ss
@@ -70,7 +70,7 @@ let dofile g infile =
     [ "dofile",      V.efunc (V.string **-> V.resultvs) (dofile g)
     ; "dostring",    V.efunc (V.string **-> V.resultvs) (dostring g)
         (* should catch Sys_error and turn into an error fallback... *)
-    ; "size",        V.efunc (V.table **->> V.int) Luahash.population
+    ; "size",        V.efunc (V.table **->> V.int) V.Luahash.length
     ; "next",        V.efunc (V.table **->  V.value **-> V.resultvs) next
     ; "nextvar",     V.efunc (V.value **->  V.resultvs) (fun x -> next g.V.globals x)
     ; "tostring",    V.efunc (V.value **->> V.string) V.to_string
@@ -83,15 +83,15 @@ let dofile g infile =
     ; "tonumber",    V.efunc (V.float **->> V.float) (fun x -> x)
     ; "type",        V.efunc (V.value **->> V.string)
                      (function
-                     | V.Nil            -> "nil"
-                     | V.Number _       -> "number"
-                     | V.String _       -> "string"
-                     | V.Table _        -> "table"
-                     | V.Function (_,_) -> "function"
-                     | V.Userdata _     -> "userdata")
+                     | V.LuaValueBase.Nil            -> "nil"
+                     | V.LuaValueBase.Number _       -> "number"
+                     | V.LuaValueBase.String _       -> "string"
+                     | V.LuaValueBase.Table _        -> "table"
+                     | V.LuaValueBase.Function (_,_) -> "function"
+                     | V.LuaValueBase.Userdata _     -> "userdata")
     ; "assert",      V.efunc (V.value **-> V.default "" V.string **->> V.unit)
                      (fun c msg -> match c with
-                     | V.Nil -> I.error ("assertion failed: " ^ msg)
+                     | V.LuaValueBase.Nil -> I.error ("assertion failed: " ^ msg)
                      | _ -> ())
     ; "error",       V.efunc (V.string **->> V.unit) I.error
     ; "setglobal",   V.efunc (V.value **-> V.value **->> V.unit)

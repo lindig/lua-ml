@@ -22,7 +22,7 @@ let bool   = V.bool in
 let ef     = V.efunc in
 let caml_modules =
   let swap (x, y) = (y, x) in
-  List.map (fun (m, vs) -> (m, V.Table (V.Table.of_list (List.map swap vs))))
+  List.map (fun (m, vs) -> (m, V.LuaValueBase.Table (V.Table.of_list (List.map swap vs))))
   ["Filename", 
        (let extension s =
          try		

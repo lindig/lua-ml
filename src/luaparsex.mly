@@ -112,9 +112,9 @@ expr :  LPAR expr RPAR  { $2 }
      |	MINUS expr1 %prec UNARY	{ A.Unop (A.Minus, $2) }
      | table                    { $1 }
      |  varexp          { $1 }
-     |  NUMBER          { A.Lit (A.Value.Number $1) }
-     |  STRING          { A.Lit (A.Value.String $1) }
-     |	NIL		{ A.Lit (A.Value.Nil)       }
+     |  NUMBER          { A.Lit (A.Value.LuaValueBase.Number $1) }
+     |  STRING          { A.Lit (A.Value.LuaValueBase.String $1) }
+     |	NIL		{ A.Lit (A.Value.LuaValueBase.Nil)       }
      |  functioncall    { A.Call $1 }
      |	NOT expr1	{ A.Unop (A.Not, $2) }
      |	expr1 AND expr1 { A.Binop ($1, A.And, $3) }
@@ -190,7 +190,7 @@ varlist1  :	var  {[$1]}
 		
 var	  :	singlevar { A.Lvar $1 }
 	  |	varexp LSQ expr1 RSQ  { A.Lindex ($1, $3) }
-	  |	varexp DOT NAME       { A.Lindex ($1, A.Lit (A.Value.String $3)) }
+	  |	varexp DOT NAME       { A.Lindex ($1, A.Lit (A.Value.LuaValueBase.String $3)) }
 	  ;
 		
 singlevar :	NAME   { $1 }

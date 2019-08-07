@@ -49,8 +49,8 @@ let infile  = in' file V.projection in
 let outfile = out file V.projection in
 
 let wrap_err = function
-  | V.Function (l, f) ->
-      V.Function(l, fun args -> try f args with Sys_error s -> [V.Nil; V.String s])
+  | V.LuaValueBase.Function (l, f) ->
+      V.LuaValueBase.Function(l, fun args -> try f args with Sys_error s -> [V.LuaValueBase.Nil; V.LuaValueBase.String s])
   | v -> raise (V.Projection (v, "function")) in
 
 (* errfunc -- a function that returns nil, string on error *)
@@ -61,7 +61,7 @@ let errchoose alts = wrap_err (V.choose alts) in
 let succeed (f : 'a -> unit) (x : 'a) = (f x; "OK") in
 let succeed2 f x y = ((f x y : unit); "OK") in
 
-let setglobal s v = V.Table.bind g.V.globals (V.String s) v in
+let setglobal s v = V.Table.bind g.V.globals (V.LuaValueBase.String s) v in
 
 let readfrom =
   let setinput file = 

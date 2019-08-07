@@ -110,7 +110,7 @@ let string_builtins =
   let invalid f x =
     try f x with Invalid_argument m -> I.error ("Invalid argument: " ^ m) in
   let wrap_inv = function
-    | V.Function (l, f) -> V.Function(l, invalid f)
+    | V.LuaValueBase.Function (l, f) -> V.LuaValueBase.Function(l, invalid f)
     | v -> raise (V.Projection (v, "function")) in
   let ifunc ty f = wrap_inv (V.efunc ty f) in
   let explode s =
@@ -226,7 +226,7 @@ let find pat s =
     let pat = match plain with Some _ -> quote_pat pat | None -> explode pat in
     find pat s init
       (fun caps i j _ -> int (i+1) :: int j :: List.map string caps)
-      (fun () -> [V.Nil]) in
+      (fun () -> [V.LuaValueBase.Nil]) in
   [ "strfind", V.efunc (V.string **-> V.string **-> V.default 0 strindex **->
                         V.option V.int **-> V.resultvs) strfind
   ; "strlen",  V.efunc (V.string **->> V.int) String.length

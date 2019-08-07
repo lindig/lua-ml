@@ -2,17 +2,34 @@ module type VALUE = sig
   type 'a userdata'
   type srcloc
   type initstate
-  type value =
-    | Nil
+
+  module rec LuaValueBase : sig
+    type value =
+      Nil
     | Number   of float
     | String   of string
     | Function of srcloc * func
     | Userdata of userdata
     | Table    of table
+    and func  = value list -> value list
+    and table = value Luahash.t
+    and userdata  = value userdata'
+
+    val eq : value -> value -> bool
+  end and  LuahashKey : sig
+    type t
+    val hash : t -> int
+    val equal : t -> t -> bool
+  end
+  and Luahash : Hashtbl.S with type key = LuaValueBase.value
+
+  type value = LuaValueBase.value
   and func  = value list -> value list
-  and table = (value, value) Luahash.t
+  and table = value Luahash.t
   and userdata  = value userdata'
-  and state = { globals : table
+
+
+  type state = { globals : table
               ; fallbacks : (string, value) Hashtbl.t
               ; mutable callstack : activation list
               ; mutable currentloc : Luasrcmap.location option (* supersedes top of stack *)
@@ -38,6 +55,8 @@ module type VALUE = sig
     val find   : table -> key:value -> value
     val bind   : table -> key:value -> data:value -> unit
     val of_list : (string * value) list -> table
+    val next : value Luahash.t -> value -> (value * value)
+    val first : value Luahash.t -> value * value
   end
   exception Projection of value * string
   val projection : value -> string -> 'a
