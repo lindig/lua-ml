@@ -46,7 +46,7 @@ examples that use an earlier version of Lua-ML and that you could study:
 
 ## Example
 
-For an example application, take a look at `luaclient.nw` in the `example`.
+For an example application, take a look at `example/luaclient.ml`.
 
 
 ## History and Raison d'être
