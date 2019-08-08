@@ -57,18 +57,6 @@ build process which makes it difficult to build just the Lua-ML library and a
 sample application. This is an attempt to untangle Lua-ML from its C-- legacy
 to make it more easily available.
 
-
-## Literate Programming
-
-Lua-ML is implemented as a literate program. A literate program is a document
-that contains documentation and source code arranged in a way that supports
-its understanding and further development. For compilation, the source code
-must be extracted from the literate program. The original Lua-ML
-implementation used [Noweb](http://www.cs.tufts.edu/~nr/noweb/), but this distribution
-employs a simpler system named [Lipsum](https://github.com/lindig/lipsum.git)
-that can be install via OPAM.
-
-
 ## Authors
 
 The Lua-ML interpreter was written by Norman Ramsey <nr@cs.tufts.edu>. It was
