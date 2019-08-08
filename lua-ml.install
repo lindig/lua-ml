@@ -39,12 +39,9 @@ lib: [
   "_build/src/luafloat.cmx" { "luafloat.cmx" }
   "_build/src/luaparser.cmi" { "luaparser.cmi" }
   "_build/src/luavalue.cmx" { "luavalue.cmx" }
-  "_build/src/luahash.cmi" { "luahash.cmi" }
   "_build/src/luaparser.cmx" { "luaparser.cmx" }
   "_build/src/luavalue.mli" { "luavalue.mli" }
-  "_build/src/luahash.cmx" { "luahash.cmx" }
   "_build/src/luaparser.mli" { "luaparser.mli" }
-  "_build/src/luahash.mli" { "luahash.mli" }
   "_build/src/luarun.cmi" { "luarun.cmi" }
   "_build/src/lua-std.cma" { "lua-std.cma" }
   "_build/src/lua-std.cmxa" { "lua-std.cmxa" }
