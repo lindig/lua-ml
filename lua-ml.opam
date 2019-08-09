@@ -7,11 +7,10 @@ authors: [
   "Norman Ramsey <nr@cs.tufts.edu>"
   "Christian Lindig <lindig@gmail.com>"
 ]
-license: "CC0"
+license: "Two-clause BSD"
 homepage: "https://github.com/lindig/lua-ml"
 bug-reports: "https://github.com/lindig/lua-ml/issues"
 depends: [
-  "lipsum"
   "ocaml"
   "ocamlbuild"
   "ocamlfind"
