@@ -335,15 +335,13 @@ let list (ty : 'a map) =
     let n = List.length l in
     let t = Table.create n in
     let rec set_elems next = function
-      | [] -> Table.bind t (String "n") (Number (pervasive_float n))
+      | [] -> ()
       | e :: es -> ( Table.bind t (Number next) (ty.embed e)
                    ; set_elems (next +. 1.0) es)
     in  (set_elems 1.0 l; Table t)
   in
   let untable (t:table) =
-    let n = match Table.find t (String "n") with
-    | Number x -> to_int x
-    | _ -> Luahash.length t  in
+    let n = Luahash.length t in
     let rec elems i =
       if i > n then []
       else ty.project (Table.find t (Number (pervasive_float i))) :: elems (i + 1) in
