@@ -92,4 +92,6 @@ let main () =
        ; exit 0
        )
 
-let _ = main ()         (* alternatively use: module G = Lua.Run(I) *)
+let _ =
+  try main ()         (* alternatively use: module G = Lua.Run(I) *)
+  with Failure msg -> print_endline msg

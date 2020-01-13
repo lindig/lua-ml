@@ -14,15 +14,11 @@ let do_lexbuf ~sourcename:filename g buf =
     | answers -> answers
   with
   | Parsing.Parse_error ->
-      let file, line, _ = Luasrcmap.last map in begin
-        prerr_string file;
-        prerr_string ", line ";
-        prerr_int line;
-        prerr_endline ": syntax error";
-        []
-      end 
-  | I.Error s -> (prerr_endline "Lua interpreter halted with error"; [])
-  | I.Value.Projection (v, w) -> (prerr_endline ("error projecting to " ^ w); [])
+    let file, line, _ = Luasrcmap.last map in
+    let errmsg = Printf.sprintf "%s: Syntax error on line %d" file line in
+    failwith errmsg
+  | I.Error s -> failwith (Printf.sprintf "Runtime error: %s" s)
+  | I.Value.Projection (v, w) -> (failwith ("Error projecting to " ^ w); [])
 
 
 let dostring g s = 

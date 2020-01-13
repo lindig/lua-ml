@@ -100,19 +100,19 @@ let _ = (prerr_string (String.make (!indent) ' ');
   let _ = pop() in
   answer
 
-    exception Errorfallback of V.value list
+exception Errorfallback of V.value list
+
 let error s = raise (Errorfallback [V.LuaValueBase.String s])
+
 exception Error of string
-let default_error_fallback g args = 
+
+let default_error_fallback g args =
+  let () = currentloc_tostack g in
   let msg = match args with V.LuaValueBase.String s :: _ -> s | _ -> "??error w/o message??" in
-  prerr_string "lua: ";
-  prerr_endline msg;
-  prerr_endline "Stack trace:";
-  currentloc_tostack g;
-  List.iter (fun a -> prerr_string "  ";
-             List.iter prerr_string (V.activation_strings g a);
-             prerr_endline "") g.V.callstack;
+  let stack_trace = List.map (fun a -> V.activation_strings g a) g.V.callstack |> List.map (fun ss -> String.concat "" ss) |> String.concat "\n" in
+  let msg = Printf.sprintf "%s\nStack trace:\n%s" msg stack_trace in
   raise (Error msg)
+
 let dump_state g = 
   let err = prerr_string in
   let rec value = function
