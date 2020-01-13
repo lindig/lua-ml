@@ -97,7 +97,7 @@ module Str = struct
         | (left,right) -> 
         let (file1,l1,col1) = location map left   in
         let (file2,l2,col2) = location map right  in
-        let (=$=) : string -> string -> bool = Pervasives.(=) in
+        let (=$=) : string -> string -> bool = Stdlib.(=) in
             if file1 =$= file2 && l1 = l2 then
                 Printf.sprintf 
                 "File \"%s\", line %d, characters %d-%d" file1 l1 col1 col2

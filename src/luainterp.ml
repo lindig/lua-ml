@@ -83,19 +83,7 @@ let with_stack info g f x =
   let _ = currentloc_tostack g in
   let _ = g.V.callstack <- (info, None) :: g.V.callstack in
   let _ = currentloc_fromstack g in
-(*
-let _ = (prerr_string (String.make (!indent) ' ');
-         prerr_string "=> ";
-             List.iter prerr_string (V.activation_strings g (info, None));
-             prerr_endline "") in
-*)
-  let pop () = g.V.callstack <- List.tl g.V.callstack; currentloc_fromstack g
-(*
-; indent := !indent - 1; prerr_string (String.make (!indent) ' ')
-; prerr_string "[]\n"
-*)
-  in
-(*let _ = indent := !indent + 1 in*)
+  let pop () = g.V.callstack <- List.tl g.V.callstack; currentloc_fromstack g in
   let answer = try f x with e -> (pop(); raise e) in
   let _ = pop() in
   answer
@@ -142,7 +130,7 @@ let rec fallback fbname g args =
   prerr_string "no fallback named `";
   prerr_string fbname;
   prerr_endline "' (probably registered an impure function as pure)";
-  dump_state g;
+  let () = dump_state g in
   assert false (* can't have any unknown fallbacks *)
 end
  in
@@ -279,22 +267,6 @@ let funname = function
   | A.Lvar v -> v
   | A.Lindex (e, A.Lit (V.LuaValueBase.String s)) -> expname e ^ "." ^ s
   | A.Lindex (e, e') -> expname e ^ "[" ^ expname e' ^ "]"
-
-(*
-let (_ : (string -> var) -> A.exp -> int -> 'a cont -> 'a cont) = exp' (fun _ -> ()) 
-
-let (pexp : (string -> var) -> A.exp -> int -> answer cont -> answer cont) = exp' (fun _ -> ())
-*)
-(*
-let show_locals rho = 
-  prerr_string "=============\n";
-  List.iter (fun x ->
-    List.iter prerr_string ([x; " is "] @
-                            match lookup rho x with
-                            | Local n -> [" local variable "; string_of_int n; "\n"]
-                            | Global -> ["global\n"])) rho;
-  prerr_endline ""
-*)
 
 let block_compiler srcmap g = 
   let append argv rest = match rest with [] -> argv | _ -> argv @ rest in

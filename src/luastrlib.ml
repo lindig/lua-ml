@@ -116,7 +116,6 @@ let string_builtins =
   let explode s =
   let rec add n cs = if n = 0 then cs else add (n-1) (s.[n-1] :: cs) in
   add (String.length s) []  in
-let andp p1 p2 c = p1 c && p2 c   in
 let orp  p1 p2 c = p1 c || p2 c   in
 let range l h c = l <= c && c <= h    in
 let lower = range 'a' 'z'   in

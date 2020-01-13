@@ -18,7 +18,7 @@ let do_lexbuf ~sourcename:filename g buf =
     let errmsg = Printf.sprintf "%s: Syntax error on line %d" file line in
     failwith errmsg
   | I.Error s -> failwith (Printf.sprintf "Runtime error: %s" s)
-  | I.Value.Projection (v, w) -> (failwith ("Error projecting to " ^ w); [])
+  | I.Value.Projection (v, w) -> (failwith ("Error projecting to " ^ w))
 
 
 let dostring ?(file="<string>") g s =
