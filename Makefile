@@ -5,10 +5,10 @@ all: lib example
 
 lib:
 	make -C src all
-	$(OCB) -I src src/lua-std.cmxa src/lua-std.cma src/lua-std.cmxs
+	$(OCB) -use-ocamlfind -I src src/lua-std.cmxa src/lua-std.cma src/lua-std.cmxs
 
 example:
-	$(OCB) -I src -I example example/luaclient.native
+	$(OCB) -use-ocamlfind -I src -I example example/luaclient.native
 
 clean:
 	make -C src clean
