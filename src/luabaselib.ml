@@ -21,12 +21,12 @@ let do_lexbuf ~sourcename:filename g buf =
   | I.Value.Projection (v, w) -> (failwith ("Error projecting to " ^ w); [])
 
 
-let dostring g s = 
+let dostring ?(file="<string>") g s =
   let abbreviate s =
     if String.length s < 200 then s
     else String.sub s 0 60 ^ "..." in
   I.with_stack (V.srcloc ("dostring('" ^ abbreviate s ^ "')") 0) g
-    (do_lexbuf ~sourcename:"<string>" g) (Lexing.from_string s)
+    (do_lexbuf ~sourcename:file g) (Lexing.from_string s)
 
 let dofile g infile =
   try
