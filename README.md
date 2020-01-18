@@ -1,68 +1,112 @@
-# Lua-ML - an embeddable Lua 2.5 interpreter implemented in OCaml
+# Lua-ML
 
 Lua-ML is an implementation of the [Lua](http://www.lua.org) 2.5 programming
-language in [OCaml](http://ocaml.org). Just like the original
-Lua implementation in C, it is designed for being embedded into applications
-as an extension language. In this case, for applications implemented in OCaml.
+language written in [OCaml](http://ocaml.org) and designed for extending
+OCaml programs.
 
-Lua is designed to extend applications written in C and its API is tailored to
-do that, using a stack-based design to pass values between C and Lua. Lua-ML
-is specifically tailored to extend applications implemented in Objective Caml
-and employs an interface that makes passing values between the two worlds
-seamless.
+Highly configurable programs like games, text editors, test generators and others
+require extensibility since it's not possible to include functionality for every possible
+use case.
+However, other highly configurable programs often resort to misusing
+configuration file formats for pseudo-DSLs or implement actual DSLs.
+Using a small embeddable interpreter can be a better choice in at least
+some of the cases.
 
-## The Case for Extension Languages
+## Overview
 
-Why would you want to use an extension language for your application? Highly
-configurable software like a web server, text editor, compiler, game or test
-generator has probably too many configurations as that these could be handled
-by command-line options alone. This leads to the addition of configuration
-files which typically permit to assign strings, numbers and booleans to names.
-As the project matures, more flexibility is needed, for example some kind of
-name space to manage the ever increasing number of options. At this point
-the design of most configuration files starts to break as it was never
-designed for this.
+Lua-ML is **not** a set of bindings for the PUC-Rio implementation written in C.
+It's a complete implementation of a Lua 2.5 interpreter and runtime in OCaml.
 
-An extension language provides much more expressive power that you might not
-need initially: assigning values to names is syntactically as easy as in any
-other format, yet it provides a vastly superior upgrade path. Used to its full
-potential, a language like Lua permits users to extend an application with new
-functionality that would be never possible in a traditional configuration file
-as such a file has no notion of execution.
+This has a number of advantages:
 
-In summary: an extension language is a good choice for any application that
-needs to be highly configurable by the user and potentially needs also to be
-extensible by the user. Rather than designing your own, Lua provides a well
-designed language for this purpose.
+### Modular runtime library
 
-To make an application truly extensible it needs to be designed for that. This
-means that the most important data types and functions are accessible from the
-Lua side such that they can be manipulated by the user. How to do this best is
-currently beyond the scope of this documentation. However, here are two
-examples that use an earlier version of Lua-ML and that you could study:
+The Lua library is modularized. You can register your own modules using
+function type combinators, create your own `userdata` types, or even completely replace
+the default standard library with your own modules.
 
+### Type and memory safety
+
+Registering functions and passing (embedding) values to Lua is as type safe as
+everything else in OCaml, so errors in interfacing with Lua are caught at compile time.
+
+Since there is no unmanaged code involved, Lua code cannot crash its host program
+or access memory it's not supposed to access (assuming there are no memory safety bugs
+in the OCaml runtime of course).
+It *should* be safe to use it even for untrusted scripts, if don't include
+modules like `Luaiolib` into the runtime. Of course, you still should exercise
+extreme caution and if you actually choose to run untrusted scripts.
+
+### Resistance to bit rot
+
+Bindings usually require a specific version of the PUC-Rio implementation (e.g. 5.1)
+and may stop working with newer versions, which makes software harder to build
+and introduces new maintenance costs.
+
+A pure OCaml implementation doesn't have that problem. The fact that this project
+was revived with minimal effort after more than a decade of dormancy is telling.
+
+### Disadvantages
+
+* Incompatible with existing Lua libraries.
+* Impelements, at this time, only antiquated Lua 2.5.
+
+## Project status
+
+Lua-ML is usable and works quite well, but there's a room for improvement,
+especially in error reporting.
+
+It doesn't make an API stability promise _yet_, which is why the versions are
+0.9.x. I do promise to keep breaking changes to the minimum,
+but there's a chance they will be necessary.
+
+One problem with backporting improvements from post-2.5 Lua specifications
+is that PUC-Rio Lua itself made a bunch of incompatible change on the way,
+so future direction requires a discussion with the user community.
+
+## Installation
+
+```
+opam install lua-ml
+```
+
+## Usage
+
+There isn't much documentation now. Any help is welcome!
+
+For an example application, take a look at `example/luaclient.ml`. It shows how to provide
+a custom type (2-tuple) as userdata, register your own module, and run Lua code.
+
+You can also read the original papers by Norman Ramsey:
+* [Embedding an Interpreted Language Using Higher-Order Functions and Types](https://www.cs.tufts.edu/~nr/pubs/embedj-abstract.html)
+* [ML Module Mania: A Type-Safe,
+Separately Compiled, Extensible Interpreter](https://www.cs.tufts.edu/~nr/pubs/maniaws-abstract.html)
+
+Lua-ML once was a literate program and a snapshot of the last pre-revival NoWeb version
+is kept in `docs/noweb`. There's no easy way to make a PDF out of it, but reading the NoWeb
+source can give a good insight into the internals.
+
+A real life example of a project using Lua-ML is [soupault](https://github.com/dmbaturin/soupault),
+a native but extensible static site generator/HTML processor.
+It exposes the element tree of the page as an abstract type (userdata) and makes HTML manipulation
+functions from [lambdasoup](https://github.com/aantron/lambdasoup) available to plugins.
+
+Historical examples that used older Lua-ML versions include:
 * [Quest Test Code Generator](http://code.google.com/p/quest-tester/)
 * [C-- Compiler](http://web.archive.org/web/20150501125322/http://www.cminusminus.org/)
 
-## Example
 
-For an example application, take a look at `example/luaclient.ml`.
+## History and Authors
 
+Lua-ML was developed as part of the [C-- compiler](http://web.archive.org/web/20150501125322/http://www.cminusminus.org/)
+project developed by [Norman Ramsey](https://www.cs.tufts.edu/~nr/) and was part of its source code.
+The complicated build process of C-- made it hard to build and use in other programs.
 
-## History and Raison d'être
+Then Christian Lindig, who also worked on C-- from 2000 to 2002, extracted it from C-- and reworked it into a standalone library to preserve it and make easier to use.
 
-Lua-ML was developed as part of the [C-- compiler]
-project and is part of its source code. The C-- compiler uses an elaborate
-build process which makes it difficult to build just the Lua-ML library and a
-sample application. This is an attempt to untangle Lua-ML from its C-- legacy
-to make it more easily available.
+In 2018-2019, effort of Gabriel Radanne and Daniil Baturin allowed Lua-ML to build with modern OCaml and become an OPAM package.
 
-## Authors
-
-The Lua-ML interpreter was written by Norman Ramsey <nr@cs.tufts.edu>. It was
-originally part of the C-- project at [www.cminusminus.org](http://web.archive.org/web/20150501125322/http://www.cminusminus.org/) and brought
-to GitHub by Christian Lindig <lindig@gmail.com> who also worked on the C--
-project 2000 to 2002.
+The current maintainer is Daniil Baturin <daniil+luaml@baturin.org>.
 
 ## Copyright
 
