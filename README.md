@@ -1,16 +1,14 @@
 # Lua-ML
 
-Lua-ML is an implementation of the [Lua](http://www.lua.org) 2.5 programming
-language written in [OCaml](http://ocaml.org) and designed for extending
+Lua-ML is an implementation of the [Lua](https://www.lua.org) 2.5 programming
+language written in [OCaml](https://ocaml.org) and designed for extending
 OCaml programs.
 
-Highly configurable programs like games, text editors, test generators and others
+Highly configurable programs like games, text editors, or test generators
 require extensibility since it's not possible to include functionality for every possible
 use case.
-However, other highly configurable programs often resort to misusing
-configuration file formats for pseudo-DSLs or implement actual DSLs.
-Using a small embeddable interpreter can be a better choice in at least
-some of the cases.
+
+For many such programs, embedding a small general purpose language can be a better option than implementing their own DSL, and definitely better than creating an accidentally Turing-complete configuration file format.
 
 ## Overview
 
@@ -21,9 +19,8 @@ This has a number of advantages:
 
 ### Modular runtime library
 
-The Lua library is modularized. You can register your own modules using
-function type combinators, create your own `userdata` types, or even completely replace
-the default standard library with your own modules.
+The Lua library is not a single module, but a set of OCaml modules and functors.
+That allows you to exclude some modules from the runtime, add your own modules, or even completely replace the default standard library with your own modules.
 
 ### Type and memory safety
 
@@ -33,9 +30,10 @@ everything else in OCaml, so errors in interfacing with Lua are caught at compil
 Since there is no unmanaged code involved, Lua code cannot crash its host program
 or access memory it's not supposed to access (assuming there are no memory safety bugs
 in the OCaml runtime of course).
-It *should* be safe to use it even for untrusted scripts, if don't include
+
+It *should* be safe to use it even for untrusted scripts, if you don't include
 modules like `Luaiolib` into the runtime. Of course, you still should exercise
-extreme caution and if you actually choose to run untrusted scripts.
+extreme caution if you actually choose to run untrusted scripts.
 
 ### Resistance to bit rot
 
@@ -53,7 +51,7 @@ was revived with minimal effort after more than a decade of dormancy is telling.
 
 ## Project status
 
-Lua-ML is usable and works quite well, but there's a room for improvement,
+Lua-ML is usable and works quite well, but there's still room for improvement,
 especially in error reporting.
 
 It doesn't make an API stability promise _yet_, which is why the versions are
