@@ -203,11 +203,21 @@ let concat x y g =
       let y = V.string.V.project y in
       V.string.V.embed (x ^ y)
   with V.Projection (_, _) -> fb1 "concat" g [x; y]
+
+(* All Lua numbers are floats,
+   so for the purpose of modulus calculation,
+   we have to force them to ints *)
+let fmod x y =
+  let x = int_of_float x in
+  let y = int_of_float y in
+  float_of_int (x mod y)
+
 let binop = function
   | A.Plus   -> arith "add" (+.)
   | A.Minus  -> arith "sub" (-.)
   | A.Times  -> arith "mul" ( *. )
   | A.Div    -> arith "div" ( /. )
+  | A.Mod    -> arith "mod" fmod
   | A.Pow    -> fun x y g -> fb1 "arith" g [x; y; V.LuaValueBase.String "pow"]
   | A.Lt     -> order "lt" (<)  (<)
   | A.Le     -> order "le" (<=) (<=)

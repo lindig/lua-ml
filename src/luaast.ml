@@ -28,7 +28,7 @@ and call =
   | Funcall  of exp * exp list
   | Methcall of exp * name * exp list
 and op = And | Or | Lt | Le | Gt | Ge | Eq | Ne | Concat
-       | Plus | Minus | Times | Div | Not | Pow
+       | Plus | Minus | Times | Div | Mod | Not | Pow
 
 type chunk =
   | Debug     of bool                   (* turn debugging on/off *)
@@ -69,7 +69,7 @@ and call =
   | Funcall  of exp * exp list
   | Methcall of exp * name * exp list
 and op = And | Or | Lt | Le | Gt | Ge | Eq | Ne | Concat
-       | Plus | Minus | Times | Div | Not | Pow
+       | Plus | Minus | Times | Div | Mod | Not | Pow
 
 type chunk =
   | Debug     of bool                   (* turn debugging on/off *)

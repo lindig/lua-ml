@@ -10,6 +10,7 @@ type token =
   | HAT
   | STAR
   | SLASH
+  | PERCENT
   | LPAR
   | RPAR
   | GETS

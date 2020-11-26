@@ -133,6 +133,7 @@ rule token = parse      (* raise Error in case of error *)
   | '-'         { fun map ->  P.MINUS }
   | '.'         { fun map ->  P.DOT   }
   | '/'         { fun map ->  P.SLASH }
+  | '%'         { fun map ->  P.PERCENT }
   | ':'         { fun map ->  P.COLON }
   | ';'         { fun map ->  P.SEMI  }
   | '<'         { fun map ->  P.LT    }
@@ -351,6 +352,7 @@ and shortstring = parse (* parse an eos delimited string *)
           | P.RSQ         -> "RSQ"
           | P.SEMI        -> "SEMI"
           | P.SLASH       -> "SLASH"
+          | P.PERCENT     -> "PERCENT"
           | P.STAR        -> "STAR"
           | P.STRING x    -> "STRING("^x^")" 
           | P.THEN        -> "THEN"

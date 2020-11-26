@@ -18,7 +18,7 @@
 
 %token EOF
 %token COMMA LBRA RBRA LT GT COLON SEMI HAT STAR
-%token SLASH LPAR RPAR GETS PLUS MINUS DOT LSQ RSQ 
+%token SLASH PERCENT LPAR RPAR GETS PLUS MINUS DOT LSQ RSQ 
 
 %token WRONGTOKEN
 %token NIL
@@ -44,7 +44,7 @@
 %left EQ NE GT LT LE GE
 %left CONC
 %left PLUS MINUS
-%left STAR SLASH
+%left STAR SLASH PERCENT
 %left UNARY NOT
 %right HAT
 
@@ -107,6 +107,7 @@ expr :  LPAR expr RPAR  { $2 }
      |	expr1 MINUS expr1 { A.Binop ($1, A.Minus, $3) }
      |	expr1 STAR expr1 { A.Binop ($1, A.Times, $3) }
      |	expr1 SLASH expr1 { A.Binop ($1, A.Div,   $3) }
+     |  expr1 PERCENT expr1 { A.Binop ($1, A.Mod, $3) }
      |	expr1 HAT expr1 { A.Binop ($1, A.Pow,   $3) }
      |	expr1 CONC expr1 { A.Binop ($1, A.Concat, $3) }
      |	MINUS expr1 %prec UNARY	{ A.Unop (A.Minus, $2) }
