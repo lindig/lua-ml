@@ -78,7 +78,7 @@ rule token = parse      (* raise Error in case of error *)
                   if Lexing.lexeme_start lexbuf = 0 then 
                     skip lexbuf map     
                   else
-                    error "illegal character" 
+                    error "illegal character '$' (a misplaced pragma not on its own line?)" 
                 }
        
   | nl "$line"  ws+ { fun map -> line_pragma  lexbuf map }
@@ -108,7 +108,7 @@ rule token = parse      (* raise Error in case of error *)
                   if Lexing.lexeme_start lexbuf = 0 then 
                     skip lexbuf map     
                   else
-                    error "illegal character" 
+                    error "illegal character '#'" 
                 }
   | id          { fun map ->  let s = get lexbuf in
                     try keyword s with Not_found -> P.NAME s
