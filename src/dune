@@ -1,0 +1,12 @@
+(ocamllex luafloat)
+
+(rule
+ (targets luaparser.ml)
+ (deps    luaparser.mly)
+ (action  (chdir %{workspace_root}
+           (run %{bin:ocamlyacc} %{deps}))))
+
+(library
+  (name lua_ml)
+  (public_name lua-ml)
+)
