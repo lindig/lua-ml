@@ -1,8 +1,0 @@
-version = "4.2.0"
-description = "An embeddable Lua 2.5 interpreter implemented in OCaml"
-archive(byte) = "lua-std.cma"
-archive(byte, plugin) = "lua-std.cma"
-archive(native) = "lua-std.cmxa"
-archive(native, plugin) = "lua-std.cmxs"
-exists_if = "lua-std.cma"
-requires = "unix"
