@@ -7,7 +7,7 @@ lib:
 
 .PHONY: example
 example:
-	dune build
+	dune build example/luaclient.exe
 
 .PHONY: clean
 clean:

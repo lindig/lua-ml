@@ -75,6 +75,10 @@ There isn't much documentation now. Any help is welcome!
 For an example application, take a look at `example/luaclient.ml`. It shows how to provide
 a custom type (2-tuple) as userdata, register your own module, and run Lua code.
 
+```sh
+dune exec example/luaclient.exe
+```
+
 You can also read the original papers by Norman Ramsey:
 * [Embedding an Interpreted Language Using Higher-Order Functions and Types](https://www.cs.tufts.edu/~nr/pubs/embedj-abstract.html)
 * [ML Module Mania: A Type-Safe,
