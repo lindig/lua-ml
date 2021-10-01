@@ -18,14 +18,14 @@ let do_lexbuf ~sourcename:filename g buf =
     let errmsg = Printf.sprintf "%s: Syntax error on line %d" file line in
     failwith errmsg
   | I.Error s -> failwith (Printf.sprintf "Runtime error: %s" s)
-  | I.Value.Projection (v, w) -> (failwith ("Error projecting to " ^ w))
+  | I.Value.Projection (_v, w) -> (failwith ("Error projecting to " ^ w))
 
 
 let dostring ?(file="<string>") g s =
   let abbreviate s =
     if String.length s < 200 then s
     else String.sub s 0 60 ^ "..." in
-  I.with_stack (V.srcloc ("dostring('" ^ abbreviate s ^ "')") 0) g
+  I.with_stack (V.srcloc ~file:("dostring('" ^ abbreviate s ^ "')") ~linedefined:0) g
     (do_lexbuf ~sourcename:file g) (Lexing.from_string s)
 
 let dofile g infile =
@@ -33,7 +33,7 @@ let dofile g infile =
     let f = match infile with "-" -> stdin | _ -> open_in infile in
     let close () = if infile <> "-" then close_in f else () in
     try 
-      let answer = I.with_stack (V.srcloc ("dofile('" ^ infile ^ "')") 0) g
+      let answer = I.with_stack (V.srcloc ~file:("dofile('" ^ infile ^ "')") ~linedefined:0) g
                      (do_lexbuf ~sourcename:infile g) (Lexing.from_channel f)
       in  (close(); answer)
     with e -> (close (); raise e)
@@ -91,7 +91,7 @@ let dofile g infile =
                      | _ -> ())
     ; "error",       V.efunc (V.string **->> V.unit) I.error
     ; "setglobal",   V.efunc (V.value **-> V.value **->> V.unit)
-                     (fun k v -> V.Table.bind g.V.globals k v)
+                     (fun k v -> V.Table.bind g.V.globals ~key:k ~data:v)
     ; "getglobal",   V.efunc (V.value **->> V.value) (I.getglobal g)
     ; "setfallback", V.efunc (V.string **-> V.value **->> V.value) (I.setfallback g)
     ] 

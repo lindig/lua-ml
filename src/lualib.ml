@@ -58,20 +58,19 @@ module Unused = struct
   module Type : USERTYPE = struct
     type 'a t = unit
     let tname = "unused type"
-    let eq _ x y = true
+    let eq _ _ _ = true
     let to_string _ _ = "<this can't happen -- value of unused type>"
   end (* Type *)
 
   module Bare =
       functor (C : CORE) -> struct
-        let init g = ()
       end (*Unused.Bare*)
 
   module Typeful (L : USERCODE) =
     struct
       type 'a userdata' = 'a L.userdata'
       module M (C : CORE with type 'a V.userdata' = 'a userdata') = struct
-        let init g = ()
+        let init _ = ()
       end (*M*)
     end (*Unused.Typeful*)
 end
@@ -139,7 +138,7 @@ module Combine = struct
                     | T1 x -> x
                     | _ -> fail x T1.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T1 x -> true | _ -> false)
+                              match upper.V.project x with T1 _ -> true | _ -> false)
       } 
   end
     module TV2 = struct
@@ -151,7 +150,7 @@ module Combine = struct
                     | T2 x -> x
                     | _ -> fail x T2.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T2 x -> true | _ -> false)
+                              match upper.V.project x with T2 _ -> true | _ -> false)
       } 
   end
 
@@ -164,7 +163,7 @@ module Combine = struct
                     | T3 x -> x
                     | _ -> fail x T3.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T3 x -> true | _ -> false)
+                              match upper.V.project x with T3 _ -> true | _ -> false)
       } 
   end
 
@@ -177,7 +176,7 @@ module Combine = struct
                     | T4 x -> x
                     | _ -> fail x T4.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T4 x -> true | _ -> false)
+                              match upper.V.project x with T4 _ -> true | _ -> false)
       } 
   end
 
@@ -190,7 +189,7 @@ module Combine = struct
                     | T5 x -> x
                     | _ -> fail x T5.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T5 x -> true | _ -> false)
+                              match upper.V.project x with T5 _ -> true | _ -> false)
       } 
   end
 
@@ -203,7 +202,7 @@ module Combine = struct
                     | T6 x -> x
                     | _ -> fail x T6.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T6 x -> true | _ -> false)
+                              match upper.V.project x with T6 _ -> true | _ -> false)
       } 
   end
 
@@ -216,7 +215,7 @@ module Combine = struct
                     | T7 x -> x
                     | _ -> fail x T7.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T7 x -> true | _ -> false)
+                              match upper.V.project x with T7 _ -> true | _ -> false)
       } 
   end
 
@@ -229,7 +228,7 @@ module Combine = struct
                     | T8 x -> x
                     | _ -> fail x T8.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T8 x -> true | _ -> false)
+                              match upper.V.project x with T8 _ -> true | _ -> false)
       } 
   end
 
@@ -242,7 +241,7 @@ module Combine = struct
                     | T9 x -> x
                     | _ -> fail x T9.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T9 x -> true | _ -> false)
+                              match upper.V.project x with T9 _ -> true | _ -> false)
       } 
   end
 
@@ -255,7 +254,7 @@ module Combine = struct
                     | T10 x -> x
                     | _ -> fail x T10.tname)
       ; V.is      = (fun x -> upper.V.is x &&
-                              match upper.V.project x with T10 x -> true | _ -> false)
+                              match upper.V.project x with T10 _ -> true | _ -> false)
       } 
   end
 
@@ -407,7 +406,7 @@ module Empty = struct
     struct
       type 'a userdata' = 'a Type.t
       module M (C : CORE with type 'a V.userdata' = 'a userdata') = struct
-        let init g = ()
+        let init _ = ()
       end (*M*)
     end (*Empty.Library*)
 end

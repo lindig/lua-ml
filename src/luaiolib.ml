@@ -3,7 +3,6 @@ type 'a state = { mutable currentin  : in_channel
                 ; mutable currentout : out_channel
                 } 
 type 'a alias_for_t = 'a t
-type 'a alias_for_state = 'a state
 module T = struct
   type 'a t     = 'a alias_for_t
   let tname = "I/O channel"
@@ -11,7 +10,7 @@ module T = struct
   | In x,    In y    -> x = y
   | Out x,   Out y   -> x = y
   | _, _ -> false
-  let to_string vs = function
+  let to_string _ = function
     | In _ -> "<input>"
     | Out _ -> "<output>"
 end
@@ -22,7 +21,7 @@ let out upper fail =
                     | Out x -> x
                     | _ -> fail x "output file")
       ; V.is      = (fun x -> upper.V.is x && match upper.V.project x with
-                                              | Out x -> true | _ -> false)
+                                              | Out _ -> true | _ -> false)
       } 
 let in' upper fail =
       { V.embed   = (fun x -> upper.V.embed (In x))
@@ -30,7 +29,7 @@ let in' upper fail =
                     | In x -> x
                     | _ -> fail x "input file")
       ; V.is      = (fun x -> upper.V.is x && match upper.V.project x with
-                                              | In x -> true | _ -> false)
+                                              | In _ -> true | _ -> false)
       } 
 module Make (T : Lua.Lib.TYPEVIEW with type 'a t = 'a t)
     : Lua.Lib.USERCODE with type 'a userdata' = 'a T.combined =
@@ -61,7 +60,7 @@ let errchoose alts = wrap_err (V.choose alts) in
 let succeed (f : 'a -> unit) (x : 'a) = (f x; "OK") in
 let succeed2 f x y = ((f x y : unit); "OK") in
 
-let setglobal s v = V.Table.bind g.V.globals (V.LuaValueBase.String s) v in
+let setglobal s v = V.Table.bind g.V.globals ~key:(V.LuaValueBase.String s) ~data:v in
 
 let readfrom =
   let setinput file = 

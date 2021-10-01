@@ -1,12 +1,16 @@
-(ocamllex luafloat)
+(ocamllex luafloat luascanner)
 
 (rule
  (targets luaparser.ml)
- (deps    luaparser.mly)
+ (deps    (:parser luaparser.mly))
  (action  (chdir %{workspace_root}
-           (run %{bin:ocamlyacc} %{deps}))))
+           (run %{bin:ocamlyacc} %{parser}))))
+
+(rule
+  (target luaparser.mli)
+  (deps luaparser.mlii)
+  (action (copy %{deps} %{target})))
 
 (library
   (name lua_ml)
-  (public_name lua-ml)
-)
+  (public_name lua-ml))

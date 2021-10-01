@@ -65,7 +65,7 @@ let nl          = '\n'
    a file/line/column triple *)
 
 rule token = parse      (* raise Error in case of error *)
-    eof         { fun map ->  P.EOF }
+    eof         { fun _ ->  P.EOF }
   | ws+         { fun map ->  token lexbuf map }
   | nl          { fun map -> nl lexbuf map ; token lexbuf map }
   
@@ -110,40 +110,40 @@ rule token = parse      (* raise Error in case of error *)
                   else
                     error "illegal character '#'" 
                 }
-  | id          { fun map ->  let s = get lexbuf in
+  | id          { fun _ ->  let s = get lexbuf in
                     try keyword s with Not_found -> P.NAME s
                 }
 
-  | number      { fun map ->  
+  | number      { fun _ ->  
                   let s = get lexbuf in P.NUMBER (float_of_string s) 
                 }
   
-  | ".."        { fun map ->  P.CONC  }
-  | "..."       { fun map ->  P.DOTS  }
-  | "<="        { fun map ->  P.LE    }
-  | "=="        { fun map ->  P.EQ    }
-  | "=>"        { fun map ->  P.ARROW }
-  | ">="        { fun map ->  P.GE    }
-  | "~="        { fun map ->  P.NE    }
-  | '('         { fun map ->  P.LPAR  }
-  | ')'         { fun map ->  P.RPAR  }
-  | '*'         { fun map ->  P.STAR  }
-  | '+'         { fun map ->  P.PLUS  }
-  | ','         { fun map ->  P.COMMA }
-  | '-'         { fun map ->  P.MINUS }
-  | '.'         { fun map ->  P.DOT   }
-  | '/'         { fun map ->  P.SLASH }
-  | '%'         { fun map ->  P.PERCENT }
-  | ':'         { fun map ->  P.COLON }
-  | ';'         { fun map ->  P.SEMI  }
-  | '<'         { fun map ->  P.LT    }
-  | '='         { fun map ->  P.GETS  }
-  | '>'         { fun map ->  P.GT    }
-  | '['         { fun map ->  P.LSQ   }
-  | ']'         { fun map ->  P.RSQ   }
-  | '^'         { fun map ->  P.HAT   }
-  | '{'         { fun map ->  P.LBRA  }
-  | '}'         { fun map ->  P.RBRA  }
+  | ".."        { fun _ ->  P.CONC  }
+  | "..."       { fun _ ->  P.DOTS  }
+  | "<="        { fun _ ->  P.LE    }
+  | "=="        { fun _ ->  P.EQ    }
+  | "=>"        { fun _ ->  P.ARROW }
+  | ">="        { fun _ ->  P.GE    }
+  | "~="        { fun _ ->  P.NE    }
+  | '('         { fun _ ->  P.LPAR  }
+  | ')'         { fun _ ->  P.RPAR  }
+  | '*'         { fun _ ->  P.STAR  }
+  | '+'         { fun _ ->  P.PLUS  }
+  | ','         { fun _ ->  P.COMMA }
+  | '-'         { fun _ ->  P.MINUS }
+  | '.'         { fun _ ->  P.DOT   }
+  | '/'         { fun _ ->  P.SLASH }
+  | '%'         { fun _ ->  P.PERCENT }
+  | ':'         { fun _ ->  P.COLON }
+  | ';'         { fun _ ->  P.SEMI  }
+  | '<'         { fun _ ->  P.LT    }
+  | '='         { fun _ ->  P.GETS  }
+  | '>'         { fun _ ->  P.GT    }
+  | '['         { fun _ ->  P.LSQ   }
+  | ']'         { fun _ ->  P.RSQ   }
+  | '^'         { fun _ ->  P.HAT   }
+  | '{'         { fun _ ->  P.LBRA  }
+  | '}'         { fun _ ->  P.RBRA  }
 
  (* this token is defined in the LUA lex.c file but is not used
   | '~'         { fun map ->  P.TILDE }   
@@ -155,7 +155,7 @@ rule token = parse      (* raise Error in case of error *)
   | '"'         { fun map ->  shortstring lexbuf map "\"" (Buffer.create 80) }
   | "[["        { fun map ->  longstring  lexbuf 1 map (Buffer.create 160) }
 
-  | _           { fun map ->  error     
+  | _           { fun _ ->  error     
                                 ( Printf.sprintf 
                                   "illegal character `%s' at character %d" 
                                   (Char.escaped (Lexing.lexeme_char lexbuf 0))
@@ -164,10 +164,10 @@ rule token = parse      (* raise Error in case of error *)
                 } 
 
 and skip = parse        (* skip to end of line *)
-    eof         { fun map ->  P.EOF        }
+    eof         { fun _ ->  P.EOF        }
   | [^'\n']+    { fun map ->  skip lexbuf map }
   | nl          { fun map ->  nl lexbuf map ; token lexbuf map }
-  | _           { fun map ->  error     
+  | _           { fun _ ->  error     
                                 ( Printf.sprintf 
                                   "illegal character `%s' at character %d" 
                                   (Char.escaped (Lexing.lexeme_char lexbuf 0))
@@ -176,7 +176,7 @@ and skip = parse        (* skip to end of line *)
                 }
 
 and file_pragma = parse
-    eof         { fun map -> error "illegal $file pragma" }
+    eof         { fun _ -> error "illegal $file pragma" }
   | [^'\n']+    { fun map -> 
                     let file = get lexbuf in
                     let loc  = (file, 1, 1) in
@@ -185,7 +185,7 @@ and file_pragma = parse
                         ; token lexbuf map
                         )
                 }
-  | _           { fun map ->  error     
+  | _           { fun _ ->  error     
                                 ( Printf.sprintf 
                                   "illegal character `%s' at character %d" 
                                   (Char.escaped (Lexing.lexeme_char lexbuf 0))
@@ -193,18 +193,18 @@ and file_pragma = parse
                                 )  
                 }
 and line_pragma = parse
-    eof         { fun map -> error "illegal $line pragma" }
+    eof         { fun _ -> error "illegal $line pragma" }
   | digit+      { fun map -> 
                     let s       = get lexbuf in
                     let line    = int_of_string s in
                     let line    = line - 1 in   (* fencepost error *)
                     let pos     = Lexing.lexeme_start lexbuf in 
-                    let (f,l,c) = Luasrcmap.last map in
+                    let (f,_l,_) = Luasrcmap.last map in
                         ( Luasrcmap.sync map pos (f,line,1)
                         ; token lexbuf map
                         )
                 }        
-  | _           { fun map ->  error     
+  | _           { fun _ ->  error     
                                 ( Printf.sprintf 
                                   "illegal character `%s' at character %d" 
                                   (Char.escaped (Lexing.lexeme_char lexbuf 0))
@@ -215,13 +215,13 @@ and line_pragma = parse
 
 
 and debug_pragma = parse
-    eof         { fun map -> error "illegal $debug pragma" }
-  | digit+      { fun map -> 
+    eof         { fun _ -> error "illegal $debug pragma" }
+  | digit+      { fun _ -> 
                     let s       = get lexbuf in
                     let debug   = int_of_string s in
                     P.DEBUG_PRAGMA debug
                 }        
-  | _           { fun map ->  error     
+  | _           { fun _ ->  error     
                                 ( Printf.sprintf 
                                   "illegal character `%s' at character %d" 
                                   (Char.escaped (Lexing.lexeme_char lexbuf 0))
@@ -232,7 +232,7 @@ and debug_pragma = parse
 
 
 and longstring = parse  (* parse a [[ .. ]] string *)
-    eof         { fun n map buf -> error "end of file in [[..]] string" }
+    eof         { fun _ _ _ -> error "end of file in [[..]] string" }
   | "]]"        { fun n map buf ->
                     if n = 1 then P.STRING (Buffer.contents buf) 
                     else ( Buffer.add_string buf "]]"
@@ -258,7 +258,7 @@ and longstring = parse  (* parse a [[ .. ]] string *)
                    ; longstring lexbuf n map buf
                    )
                 }  
-  | _           { fun n map buf ->  error     
+  | _           { fun _ _ _ ->  error     
                                 ( Printf.sprintf 
                                   "illegal character `%s' at character %d" 
                                   (Char.escaped (Lexing.lexeme_char lexbuf 0))
@@ -267,9 +267,9 @@ and longstring = parse  (* parse a [[ .. ]] string *)
                 }
 
 and shortstring = parse (* parse an eos delimited string *)
-    eof         { fun map eos buf -> 
+    eof         { fun _ _ buf -> 
                   error ("end of file in string: " ^ Buffer.contents buf) } 
-  | '\n'        { fun map eos buf ->
+  | '\n'        { fun _ _ buf ->
                   error ("end of line in string: " ^ Buffer.contents buf) }
   | '\\' _      { fun map eos buf -> 
                   let c = getchar lexbuf 1 in
@@ -301,7 +301,7 @@ and shortstring = parse (* parse an eos delimited string *)
                         ; shortstring lexbuf map eos buf
                         )
                   }
-  | _             { fun map eos buf -> assert false }
+  | _             { fun _ _ _ -> assert false }
 
 
 

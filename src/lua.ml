@@ -19,5 +19,3 @@ module MakeEval = Luainterp.Make
 module MakeInterp = Luabaselib.Add
 
 module Empty = Lualib.Empty
-
-let scanner map buf = Luascanner.token buf map
