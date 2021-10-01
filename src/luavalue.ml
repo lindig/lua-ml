@@ -179,7 +179,7 @@ module Table = struct
     | _ -> Luahash.replace t k v
   let of_list l =
     let t = create (List.length l) in
-    let _ = List.iter (fun (k, v) -> bind t (String k) v) l in
+    let _ = List.iter (fun (k, v) -> bind t ~key:(String k) ~data:v) l in
     t
 
   let next h key =
@@ -207,7 +207,7 @@ end
 let srcloc =
   let n = ref 0 in
   fun ~file ~linedefined:line -> (n := !n + 1; (!n, file, line))
-let lua_func ~file ~linedefined:line f = Function (srcloc file line, f)
+let lua_func ~file ~linedefined:line f = Function (srcloc ~file ~linedefined:line, f)
 let caml_func = lua_func ~file:"(OCaml)" ~linedefined:(-1)
 let luastring_of_float x =
   let s = string_of_float x in
@@ -222,7 +222,7 @@ let rec to_string = function
   | String s        -> s
   | Function (_, _) -> "function"
   | Userdata u      -> U.to_string to_string u
-  | Table t         -> "table"
+  | Table _         -> "table"
 type objname = Fallback of string | Global of string | Element of string * value
 let key_matching iter t needle =
   let r = ref None in
@@ -242,10 +242,10 @@ let objname g needle =
                 (match key_matching Luahash.iter t needle with
                 | Some v -> r := Some (Element (n, v))
                 | None -> ())
-            | k, v -> ())
+            | _, _ -> ())
           | Some _ -> ()) g.globals;
         !r
-let activation_strings g ((uid, file, line) as srcloc, current) =
+let activation_strings g ((_uid, file, line) as srcloc, current) =
   let first tail = match objname g (Function (srcloc, fun _ -> assert false)) with
   | Some (Fallback n) -> "`" :: n :: "' fallback" :: tail
   | Some (Global n)   -> "function " :: n :: tail
@@ -313,7 +313,7 @@ let unit =  { embed = (fun () -> Nil)
             ; is = (function Nil -> true | _ -> false)
             } 
 let enum typename pairs = 
-  { embed = (fun v' -> try String (fst (List.find (fun (k, v) -> v = v') pairs))
+  { embed = (fun v' -> try String (fst (List.find (fun (_, v) -> v = v') pairs))
                        with Not_found -> assert false)
   ; project = (function String k ->
                  (try List.assoc k pairs
@@ -336,7 +336,7 @@ let list (ty : 'a map) =
     let t = Table.create n in
     let rec set_elems next = function
       | [] -> ()
-      | e :: es -> ( Table.bind t (Number next) (ty.embed e)
+      | e :: es -> ( Table.bind t ~key:(Number next) ~data:(ty.embed e)
                    ; set_elems (next +. 1.0) es)
     in  (set_elems 1.0 l; Table t)
   in
@@ -344,16 +344,16 @@ let list (ty : 'a map) =
     let n = Luahash.length t in
     let rec elems i =
       if i > n then []
-      else ty.project (Table.find t (Number (pervasive_float i))) :: elems (i + 1) in
+      else ty.project (Table.find t ~key:(Number (pervasive_float i))) :: elems (i + 1) in
     elems 1
   in { embed = table; project = (function Table t -> untable t
                                         | v -> raise (Projection (v, "list"))); 
-       is = (function Table t -> true | _ -> false) }
+       is = (function Table _ -> true | _ -> false) }
 let optlist ty = default [] (list ty)
 let value = { embed = (fun x -> x); project = (fun x -> x); is = (fun _ -> true) }
 let table = { embed = (fun x -> Table x)
             ; project = (function Table t -> t | v -> raise (Projection (v, "table")))
-            ; is = (function Table t -> true | _ -> false)
+            ; is = (function Table _ -> true | _ -> false)
             }
 let projectRecord ty v = match v with
 | Table t ->
@@ -371,11 +371,8 @@ let record ty =
   } 
 let take1 = function  (* take one value from a list of arguments *)
   | [] -> Nil
-  | h::t -> h
+  | h::_ -> h
 
-let take2 = function [] -> Nil, Nil | v :: vs -> v, take1 vs
-
-let const f s = f
 let (-->) arg result =
   { embed =   (fun f -> 
                caml_func (fun args -> [result.embed (f (arg.project (take1 args)))]))
@@ -399,7 +396,7 @@ let ( **-> ) (firstarg : 'a map) (lastargs : 'b mapf) : ('a -> 'b) mapf =
   { embed = apply; project = unapp; is = is }
 
 let results (a_to_values : 'a -> value list) (a_of_values : value list -> 'a) = 
-  { embed   = (fun (a:'a) -> fun lua_args -> a_to_values a);
+  { embed   = (fun (a:'a) -> fun _lua_args -> a_to_values a);
     project = (fun f_lua -> (a_of_values (f_lua []) : 'a));
     is = (function [] -> true | _ :: _ -> false)
   } 
@@ -418,12 +415,6 @@ let resultpair a b =
     (a.project x, b.project y) in
   results em pr
 
-(* other possibilities not exposed in interface *)
-let result2 r1 r2 = results (fun (v1, v2) -> [r1.embed v1; r2.embed v2])
-                            ((fun (l1, l2) -> r1.project l1, r2.project l2) << take2)
-let runit =
-  results (fun () -> []) 
-          (function [] -> () | h :: _ -> raise (Projection (h, "unit result")))
 let dots_arrow (varargs : 'a map) (result : 'b map) : ('a list -> 'b) mapf =
   let apply (f : 'a list -> 'b) = 
     fun (args : value list) ->
@@ -444,7 +435,7 @@ let func (arrow : 'a mapf) : ('a map) =
 let closure (arrow : 'a mapf) : ('a map) =
   { embed   = (fun (f : 'a) -> caml_func (arrow.embed f))
   ; project = (function Function (_, f) -> (arrow.project f : 'a)
-                      | Table t as v -> (let f = try Table.find t (String "apply")
+                      | Table t as v -> (let f = try Table.find t ~key:(String "apply")
         with Not_found -> raise (Projection (v, "function"))  in
 match f with
 | Function (_, f) -> arrow.project (fun vs -> f (v :: vs))
@@ -452,7 +443,7 @@ match f with
 )
                       | v -> raise (Projection (v, "function")))
   ; is = (function Function(_, _) -> true | Table t -> (try
-  match Table.find t (String "apply") with
+  match Table.find t ~key:(String "apply") with
   | Function (_, _) -> true
   | _ -> false
 with Not_found -> false)
@@ -472,7 +463,6 @@ let choose alts =
     f args in
   caml_func run
 
-let lf = efunc (list value **-> result (list value)) List.rev
 let ( <|> ) t t' =
   { project = (fun v -> if t.is v then t.project v else t'.project v)
   ; embed   = t'.embed
@@ -485,8 +475,7 @@ let ( <@ ) t k =
   ; is      = t.is
   }
 module StringList = struct
-  type t = (string -> unit) -> unit
-  let empty f = ()
+  let empty _ = ()
   let of_list l f = List.iter f l
   let append l1 l2 f = l1 f; l2 f
 end

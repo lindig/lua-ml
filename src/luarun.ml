@@ -10,12 +10,6 @@ module Make (I : INTERP) = struct
   module V = I.Value
   let state = I.mk()
   let dumpstate = ref false
-  let showresults =
-    let rec loop n = function
-      | h :: t -> print_string "Result "; print_int n; print_string " = ";
-                  print_endline (V.to_string h); loop (n+1) t
-      | [] -> ()
-    in loop 1
   let run infile = ignore (I.dofile state infile)
   let run_interactive infile =
     let rec loop n pfx =

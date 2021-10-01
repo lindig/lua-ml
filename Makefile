@@ -1,18 +1,14 @@
-
-OCB = ocamlbuild
-
+.PHONY: all
 all: lib example
 
+.PHONY: lib
 lib:
-	make -C src all
-	$(OCB) -use-ocamlfind -I src src/lua-std.cmxa src/lua-std.cma src/lua-std.cmxs
+	dune build @all
 
+.PHONY: example
 example:
-	$(OCB) -use-ocamlfind -I src -I example example/luaclient.native
+	dune build example/luaclient.exe
 
+.PHONY: clean
 clean:
-	make -C src clean
-	make -C example clean
-	$(OCB) -clean
-
-.PHONY: all example lib clean
+	dune clean

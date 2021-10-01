@@ -93,7 +93,7 @@ let bprintf_internal buf format =
   and skip_args j =
     match String.get format j with
       '0' .. '9' | ' ' | '.' | '-' -> skip_args (succ j)
-    | c -> j
+    | _ -> j
 
   in doprn 0
 
@@ -155,7 +155,7 @@ let cclass cs =
   | _ -> pos cs   in
 
 let find pat s =
-  let prerr_string s = () in
+  let prerr_string _ = () in
   let length = String.length s in
   let () = prerr_string "=========\n" in
   let lefts  = ref [] in
@@ -170,7 +170,7 @@ let find pat s =
     push pairs (lp, start, i);
     succ i (fun () -> ignore (pop pairs); push lefts (lp, start); fail()) in
   let captures () =
-    let rec insert ((i, l, r) as p) = function
+    let rec insert ((i, _l, _r) as p) = function
       | [] -> [p]
       | (i', _, _) as p' :: ps -> if i < i' then p :: p' :: ps else p' :: insert p ps
     in let pairs = List.fold_right insert (!pairs) [] in

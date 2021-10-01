@@ -1,4 +1,3 @@
-exception Bogus
 module type S = sig
   module Value : Luavalue.S
   module Ast   : Luaast.S with module Value = Value
@@ -27,7 +26,6 @@ module type S = sig
        creating t if needed *)
 end
 
-type answer = unit * string * bool
 module Make  (T : Luavalue.USERDATA)
              (L : Lualib.USERCODE with type 'a userdata' = 'a T.t) :
     S with type 'a Value.userdata'  = 'a T.t = struct
@@ -62,7 +60,7 @@ let currentloc_tostack g =
 
 let currentloc_fromstack g =
   match g.V.callstack with
-  | (info, where) :: _ -> g.V.currentloc <- where
+  | (_, where) :: _ -> g.V.currentloc <- where
   | [] -> ()
 
 type var = Global | Local of int
@@ -70,7 +68,7 @@ let lookup rho x =
   let rec look = function
     | [] -> Global
     | h :: t when h = x -> Local (List.length t)
-    | h :: t -> look t
+    | _ :: t -> look t
   in look rho
 
 
@@ -78,7 +76,6 @@ let notnil = function
   | V.LuaValueBase.Nil -> false
   | _ -> true
 
-    let indent = ref 0
 let with_stack info g f x =
   let _ = currentloc_tostack g in
   let _ = g.V.callstack <- (info, None) :: g.V.callstack in
@@ -124,7 +121,7 @@ let rec fallback fbname g args =
   let call f g args = match f with
   | V.LuaValueBase.Function (info, f) -> with_stack info g f args
   | v when fbname <> "function" -> fallback "function" g (v :: args)
-  | v -> default_error_fallback g [V.LuaValueBase.String "`function' fallback not a function"] in
+  | _ -> default_error_fallback g [V.LuaValueBase.String "`function' fallback not a function"] in
   let fbval = try Hashtbl.find g.V.fallbacks fbname
               with Not_found -> begin
   prerr_string "no fallback named `";
@@ -154,23 +151,9 @@ let apply f g args = match f with
   | v -> fallback "function" g (v :: args)
 (*unboxval*)
 
-let indent = ref 0
-let apply' f g args =
-  let str = proj_string g in
-  let ind = String.make (!indent) '-' in
-  Printf.eprintf
-    "%sApply %s(%s)\n" ind (str f) (String.concat ", " (List.map str args));
-  indent := !indent + 2;
-  let answer = try apply f g args with e -> indent := !indent - 2; raise e in
-  indent := !indent - 2;
-  Printf.eprintf "%sResults %s(%s) = \n\t%s\n" ind
-    (str f) (String.concat ", " (List.map str args))
-    (String.concat ", " (List.map str answer));
-  answer
-
 let fb1 name state args = match fallback name state args with
   | [] -> V.LuaValueBase.Nil
-  | h :: t -> h
+  | h :: _ -> h
 (*unboxval*)
 let arith opname op =
   let opname = V.LuaValueBase.String opname in (* allocate early and share *)
@@ -185,8 +168,6 @@ let negate x g = try
   let x = V.float.V.project x in
   V.float.V.embed (~-. x)
   with V.Projection (_, _) -> fb1 "arith" g [x; V.LuaValueBase.Nil; V.LuaValueBase.String "umn"]
-type fcmp = float  -> float  -> bool
-type scmp = string -> string -> bool
 let order opname nop sop =
   let opname = V.LuaValueBase.String opname in
   let f x y g =
@@ -223,8 +204,8 @@ let binop = function
   | A.Le     -> order "le" (<=) (<=)
   | A.Gt     -> order "gt" (>)  (>)
   | A.Ge     -> order "ge" (>=) (>=)
-  | A.Eq     -> fun x y g -> V.bool.V.embed (V.eq x y)
-  | A.Ne     -> fun x y g -> V.bool.V.embed (not (V.eq x y))
+  | A.Eq     -> fun x y _ -> V.bool.V.embed (V.eq x y)
+  | A.Ne     -> fun x y _ -> V.bool.V.embed (not (V.eq x y))
   | A.And    -> assert false (* short circuit *)
   | A.Or     -> assert false (* short circuit *)
   | A.Concat -> concat
@@ -232,24 +213,24 @@ let binop = function
 
 let unop = function
   | A.Minus  -> negate
-  | A.Not    -> fun v g -> (match v with V.LuaValueBase.Nil -> V.LuaValueBase.Number 1.0 | _ -> V.LuaValueBase.Nil)
+  | A.Not    -> fun v _ -> (match v with V.LuaValueBase.Nil -> V.LuaValueBase.Number 1.0 | _ -> V.LuaValueBase.Nil)
   | _        -> assert false (* all other operators are binary *)
 (*unboxval*)
 let index g t key = match t with
 | V.LuaValueBase.Table t ->
-    (match V.Table.find t key with
+    (match V.Table.find t ~key with
     | V.LuaValueBase.Nil -> fb1 "index" g [V.LuaValueBase.Table t; key]
     | v -> v)
 | _ -> fb1 "gettable" g [t; key]
 
 let settable g t key v = match t with
-| V.LuaValueBase.Table t -> V.Table.bind t key v
+| V.LuaValueBase.Table t -> V.Table.bind t ~key ~data:v
 | _ -> ignore (fallback "settable" g [t; key; v])
 let getglobal g k =
-  match V.Table.find g.V.globals k with
+  match V.Table.find g.V.globals ~key:k with
   | V.LuaValueBase.Nil -> fb1 "getglobal" g [k]
   | v -> v
-let setglobal g k v = V.Table.bind g.V.globals k v
+let setglobal g k v = V.Table.bind g.V.globals ~key:k ~data:v
 let setlocal locals n v = Array.set locals n v    (* could be made unsafe *)
 let getlocal locals n   = Array.get locals n 
 
@@ -262,21 +243,7 @@ let rec extend rho = function
   | _ -> rho
 
     type compiled = unit -> value list
-    type a = A of a  (* used in place of type variable in type constraints *)
 type 'a cont  = V.value array -> 'a  (* for exp1 *)
-type 'a xcont = V.value list -> V.value array -> 'a  (* for exp, explist *)
-let wrap f x = let l = f x in (prerr_string "function returned ";
-                               prerr_int (List.length l);
-                               prerr_endline " values";
-                               l)
-
-let expname = function
-  | A.Var v -> v
-  | _ -> "?"
-let funname = function
-  | A.Lvar v -> v
-  | A.Lindex (e, A.Lit (V.LuaValueBase.String s)) -> expname e ^ "." ^ s
-  | A.Lindex (e, e') -> expname e ^ "[" ^ expname e' ^ "]"
 
 let block_compiler srcmap g = 
   let append argv rest = match rest with [] -> argv | _ -> argv @ rest in
@@ -304,7 +271,7 @@ let rec exp1 localref =
           | [] -> bind theta bindings
           | h::t ->
               let theta = listbind (n +. 1.0) theta t in
-              let theta = fun l -> V.Table.bind (tbl l) (V.LuaValueBase.Number n) (getlocal l vloc);
+              let theta = fun l -> V.Table.bind (tbl l) ~key:(V.LuaValueBase.Number n) ~data:(getlocal l vloc);
                                    theta l
               in  exp1 rho h vloc theta
                 (* PERHAPS FOR LAST ELEMENT IN LIST, SHOULD CAPTURE *ALL* RESULTS? *)
@@ -312,7 +279,7 @@ let rec exp1 localref =
           | [] -> theta
           | (n, h) :: t ->
               let theta = bind theta t in
-              let theta = fun l -> V.Table.bind (tbl l) (V.LuaValueBase.String n) (getlocal l vloc);
+              let theta = fun l -> V.Table.bind (tbl l) ~key:(V.LuaValueBase.String n) ~data:(getlocal l vloc);
                                    theta l
               in  exp1 rho h vloc theta in
         let size  = List.length bindings + List.length lists in
@@ -339,7 +306,7 @@ let rec exp1 localref =
     | A.Unop (op, e) ->
         let op = unop op in
         exp1 rho e loc (fun l -> finish (op (getlocal l loc) g) l)
-    | A.Call c -> exp localref rho e loc (fun _ -> theta)
+    | A.Call _ -> exp localref rho e loc (fun _ -> theta)
 in  exp1
 and exp localref rho e loc theta = 
   let finish  vs l = match vs with
@@ -449,7 +416,7 @@ and lvar localref rho lv lhsloc nextlvar =
   match lv with
   | A.Lvar x -> 
       let setx = match rho x with
-      | Global  -> fun l v -> setglobal g (V.LuaValueBase.String x) v
+      | Global  -> fun _ v -> setglobal g (V.LuaValueBase.String x) v
       | Local n -> fun l v -> setlocal l n v in
       nextlvar setx lhsloc
   | A.Lindex (t, key) ->
@@ -460,7 +427,7 @@ and lvar localref rho lv lhsloc nextlvar =
             (fun v -> settable g t key v))) in
       nextlvar setidx (lhsloc+2)
 and lvars localref rho loc lvs finish = match lvs with
-  | [] -> finish (fun l vs -> ()) loc
+  | [] -> finish (fun _l _vs -> ()) loc
   | h :: t ->
       lvar localref rho h loc (fun setter loc ->
         lvars localref rho loc t (fun setlvs loc ->
@@ -474,25 +441,25 @@ and lvars localref rho loc lvs finish = match lvs with
       block
   in  bcomp, local_size
 let value_list = V.list V.value
-let lambda (src, debug) (file, line, col) args varargs body state =
+let lambda (src, debug) (file, line, _col) args varargs body state =
   let rho = let args' = List.rev args in if varargs then "arg" :: args' else args' in
   let block, count = block_compiler src state in
-  let body = block ~debug rho body (fun l -> []) (fun results -> results) in
+  let body = block ~debug rho body (fun _ -> []) (fun results -> results) in
   let n = max (count()) (List.length rho) in
-  let srcloc = V.srcloc file line in
+  let srcloc = V.srcloc ~file ~linedefined:line in
   srcloc, 
   fun argv ->
     let locals = Array.make n V.LuaValueBase.Nil in
     let rec walk n formals actuals = match formals with
       | [] -> if varargs then Array.set locals n (value_list.V.embed actuals)
-      | f :: fs ->
+      | _ :: fs ->
           let a, a's = match actuals with [] -> V.LuaValueBase.Nil, [] | h :: t -> h, t in
           (Array.set locals n a; walk (n+1) fs a's)  in
     let _ = walk 0 args argv in
     body locals
 (*unboxval*)
 let func (info, f) = V.LuaValueBase.Function (info, f)
-let chunk ((smap, dbg) as srcdbg) block rho g = function
+let chunk ((smap, _) as srcdbg) block rho g = function
   | A.Debug _ -> assert false (* must never get here *)
   | A.Statement s -> block rho [s]
   | A.Fundef (pos, f, args, varargs, body) ->
@@ -511,7 +478,7 @@ let compile ~srcdbg cs g =
   let block, count = block_compiler (fst srcdbg) g in
   let ret = fun results -> results in
   let rec chunks ((smap, debug) as srcdbg) rho = function
-    | [] -> fun l -> []
+    | [] -> fun _ -> []
     | A.Debug dbg :: t -> chunks (smap, dbg) rho t
     | h :: t -> chunk srcdbg (block ~debug) rho g h
                 (chunks srcdbg (extendchunk rho h) t) ret in
@@ -519,7 +486,7 @@ let compile ~srcdbg cs g =
   let locals = Array.make (count()) V.LuaValueBase.Nil in
   fun () -> theta locals
 
-    let errorfallback s g = fun args -> fallback "error" g [V.LuaValueBase.String s]
+    let errorfallback s g = fun _args -> fallback "error" g [V.LuaValueBase.String s]
 let arithfallback g   = function
   | [V.LuaValueBase.Number x; V.LuaValueBase.Number y; V.LuaValueBase.String s] when s = "pow" -> [V.LuaValueBase.Number (x ** y)]
   | args -> errorfallback "unexpected type at conversion to number" g args
@@ -528,14 +495,14 @@ let funcfallback g  = function
         let args' = String.concat ", " (List.map V.to_string args) in 
         let call  = Printf.sprintf "%s(%s)" (V.to_string f) args' in
         fallback "error" g [V.LuaValueBase.String ("call expr is "^call)]
-    | args      -> fallback "error" g [V.LuaValueBase.String "call expr not a function"]
+    | _args      -> fallback "error" g [V.LuaValueBase.String "call expr not a function"]
       
 let fbs g =
   [ "arith",     arithfallback g
   ; "order",     errorfallback "unexpected type at comparison" g
   ; "concat",    errorfallback "unexpected type at conversion to string" g
-  ; "index",     (fun args -> [V.LuaValueBase.Nil])
-  ; "getglobal", (fun args -> [V.LuaValueBase.Nil])
+  ; "index",     (fun _args -> [V.LuaValueBase.Nil])
+  ; "getglobal", (fun _args -> [V.LuaValueBase.Nil])
   ; "gettable",  errorfallback "indexed expression not a table" g
   ; "settable",  errorfallback "indexed expression not a table" g
   ; "function",  funcfallback g
@@ -563,42 +530,42 @@ let register_module tabname members g =
   | _           -> catcherrorfallback g
                    [V.LuaValueBase.String ("Global value " ^ tabname ^ " is not (table or nil)")] in
   let _ = register_global g (V.LuaValueBase.String tabname) (V.LuaValueBase.Table t) in
-  let bind (k, v) = match V.Table.find t (V.LuaValueBase.String k) with
-  | V.LuaValueBase.Nil -> V.Table.bind t (V.LuaValueBase.String k) v
+  let bind (k, v) = match V.Table.find t ~key:(V.LuaValueBase.String k) with
+  | V.LuaValueBase.Nil -> V.Table.bind t ~key:(V.LuaValueBase.String k) ~data:v
   | _ ->
       Printf.kprintf failwith "Duplicate '%s' registered in module '%s'" k tabname in
   List.iter bind members
 
       
-let nil = A.Lit V.LuaValueBase.Nil
-let three = A.Lit (V.LuaValueBase.Number 3.0)
+(* let nil = A.Lit V.LuaValueBase.Nil *)
+(* let three = A.Lit (V.LuaValueBase.Number 3.0) *)
 
-let ret = A.Return ([nil; three])
+(* let ret = A.Return ([nil; three]) *)
 
-let test_state = V.state ()
+(* let test_state = V.state () *)
 
-let bogusmap = Luasrcmap.mk ()
-let stmts l = compile ~srcdbg:(bogusmap, false) (List.map (fun s -> A.Statement s) l)
+(* let bogusmap = Luasrcmap.mk () *)
+(* let stmts l = compile ~srcdbg:(bogusmap, false) (List.map (fun s -> A.Statement s) l) *)
 
-let num n = A.Lit (V.LuaValueBase.Number (float n))
-let rtest = stmts [ret]
-let sum = stmts [A.Return ([A.Binop (three, A.Plus, three)])]
-let exp = stmts [A.Return ([A.Binop (three, A.Times, A.Binop (num 2, A.Minus, three))])]
-let x = A.Var "x"
-let gets x e = A.Assign ([A.Lvar x], [e])
-let binary op e1 e2 = A.Binop (e1, op, e2)
-let lt = binary A.Lt
-let times = binary A.Times
-let loop = [ gets "x" (num 10)
-               ; A.WhileDo (lt x (num 100), [gets "x" (times (num 2) x)])
-               ; A.Return [x]]
+(* let num n = A.Lit (V.LuaValueBase.Number (float n)) *)
+(* let rtest = stmts [ret] *)
+(* let sum = stmts [A.Return ([A.Binop (three, A.Plus, three)])] *)
+(* let exp = stmts [A.Return ([A.Binop (three, A.Times, A.Binop (num 2, A.Minus, three))])] *)
+(* let x = A.Var "x" *)
+(* let gets x e = A.Assign ([A.Lvar x], [e]) *)
+(* let binary op e1 e2 = A.Binop (e1, op, e2) *)
+(* let lt = binary A.Lt *)
+(* let times = binary A.Times *)
+(* let loop = [ gets "x" (num 10) *)
+(*                ; A.WhileDo (lt x (num 100), [gets "x" (times (num 2) x)]) *)
+(*                ; A.Return [x]] *)
 
-let test _ =
-  [ "return nil and three", rtest test_state
-  ; "sum of three and three", sum test_state
-  ; "expression minus three", exp test_state
-  ; "result of loop", stmts loop test_state
-  ] 
+(* let test _ = *)
+(*   [ "return nil and three", rtest test_state *)
+(*   ; "sum of three and three", sum test_state *)
+(*   ; "expression minus three", exp test_state *)
+(*   ; "result of loop", stmts loop test_state *)
+(*   ] *) 
 
   end
   module Core = struct
