@@ -1,5 +1,6 @@
 (lang dune 2.9)
 (name lua-ml)
+(version 0.9.3)
 (generate_opam_files true)
 
 (maintainers "Daniil Baturin <daniil+opam@baturin.org>")
