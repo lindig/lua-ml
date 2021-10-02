@@ -6,7 +6,7 @@
 (maintainers "Daniil Baturin <daniil+opam@baturin.org>")
 (authors "Norman Ramsey <nr@cs.tufts.edu>" "Christian Lindig <lindig@gmail.com>")
 (source (github lindig/lua-ml))
-(license "Two-clause BSD")
+(license "BSD-2-Clause")
 
 (package
   (name lua-ml)
