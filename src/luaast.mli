@@ -2,6 +2,9 @@ module type S = sig
   module Value : Luavalue.S
   type value = Value.value
   type name = string
+
+type varargs = bool
+type funcargs = name list * varargs
 type location = int (* character position *)
 type stmt =
   | Stmt'       of location * stmt
@@ -33,9 +36,8 @@ and op = And | Or | Lt | Le | Gt | Ge | Eq | Ne | Concat
 type chunk =
   | Debug     of bool                   (* turn debugging on/off *)
   | Statement of stmt
-  | Fundef    of location * lval       * name list * varargs * block
-  | Methdef   of location * exp * name * name list * varargs * block
-and varargs = bool
+  | Fundef    of location * lval       * funcargs * block
+  | Methdef   of location * exp * name * funcargs * block
 
 end
 

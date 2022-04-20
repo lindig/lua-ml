@@ -462,10 +462,10 @@ let func (info, f) = V.LuaValueBase.Function (info, f)
 let chunk ((smap, _) as srcdbg) block rho g = function
   | A.Debug _ -> assert false (* must never get here *)
   | A.Statement s -> block rho [s]
-  | A.Fundef (pos, f, args, varargs, body) ->
+  | A.Fundef (pos, f, (args, varargs), body) ->
       let v = func (lambda srcdbg (Luasrcmap.location smap pos) args varargs body g) in
       block rho [A.Stmt'(pos, A.Assign ([f], [A.Lit v]))]
-  | A.Methdef (pos, obj, meth, args, varargs, body) ->
+  | A.Methdef (pos, obj, meth, (args, varargs), body) ->
       let args = "self" :: args in
       let v = func (lambda srcdbg (Luasrcmap.location smap pos) args varargs body g) in
       block rho [A.Stmt'(pos, A.Assign ([A.Lindex (obj, A.Lit (V.LuaValueBase.String meth))],

@@ -61,8 +61,8 @@ chunklist : /* empty */        { [] }
 
 function_     : FUNCTION funcname body  { $2 $3 (Parsing.symbol_start()) };
 
-funcname  : var             { fun ((args, v), ss) w -> A.Fundef (w, $1, args, v, ss) }
-	  | varexp COLON NAME { fun ((args, v), ss) w -> A.Methdef (w, $1, $3, args, v, ss) }
+funcname  : var             { fun (args, ss) w -> A.Fundef (w, $1, args, ss) }
+	  | varexp COLON NAME { fun (args, ss) w -> A.Methdef (w, $1, $3, args, ss) }
           ;
 
 body :  LPAR parlist RPAR block END { ($2, $4 ) } ;
