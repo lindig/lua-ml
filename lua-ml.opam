@@ -4,7 +4,9 @@ version: "0.9.4-dev"
 synopsis: "An embeddable Lua 2.5 interpreter implemented in OCaml"
 maintainer: ["Daniil Baturin <daniil+opam@baturin.org>"]
 authors: [
-  "Norman Ramsey <nr@cs.tufts.edu>" "Christian Lindig <lindig@gmail.com>"
+  "Norman Ramsey <nr@cs.tufts.edu>"
+  "Christian Lindig <lindig@gmail.com>"
+  "Daniil Baturin <daniil+luaml@baturin.org>"
 ]
 license: "BSD-2-Clause"
 homepage: "https://github.com/lindig/lua-ml"
