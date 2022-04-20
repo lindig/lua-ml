@@ -149,8 +149,10 @@ rule token = parse      (* raise Error in case of error *)
   | '~'         { fun map ->  P.TILDE }   
   *)
 
-  | "--" [^ '\n']*
-                { fun map ->  token lexbuf map }
+  | "--[["
+                { fun map ->  longcomment lexbuf map }
+  | "--"
+                { fun map ->  shortcomment lexbuf map }
   | '\''        { fun map ->  shortstring lexbuf map "'" (Buffer.create 80) }
   | '"'         { fun map ->  shortstring lexbuf map "\"" (Buffer.create 80) }
   | "[["        { fun map ->  longstring  lexbuf 1 map (Buffer.create 160) }
@@ -161,7 +163,27 @@ rule token = parse      (* raise Error in case of error *)
                                   (Char.escaped (Lexing.lexeme_char lexbuf 0))
                                   (Lexing.lexeme_start lexbuf)
                                 )  
-                } 
+                }
+
+and shortcomment =
+  parse
+  | eof
+                { fun _ ->  P.EOF }
+  | nl
+                { fun map -> nl lexbuf map; token lexbuf map }
+  | _
+                { fun map -> shortcomment lexbuf map }
+
+and longcomment =
+  parse
+  | eof
+                { fun _ -> error "end of file in a --[[ ... ]] comment" }
+  | "]]"
+                { fun map -> token lexbuf map }
+  | nl
+                { fun map -> nl lexbuf map; longcomment lexbuf map }
+  | _
+                { fun map -> longcomment lexbuf map }
 
 and skip = parse        (* skip to end of line *)
     eof         { fun _ ->  P.EOF        }
