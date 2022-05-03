@@ -1,10 +1,15 @@
 (lang dune 2.9)
 (name lua-ml)
-(version 0.9.3)
+(version 0.9.4)
 (generate_opam_files true)
 
 (maintainers "Daniil Baturin <daniil+opam@baturin.org>")
-(authors "Norman Ramsey <nr@cs.tufts.edu>" "Christian Lindig <lindig@gmail.com>")
+
+(authors
+  "Norman Ramsey <nr@cs.tufts.edu>"
+  "Christian Lindig <lindig@gmail.com>"
+  "Daniil Baturin <daniil+lua-ml@baturin.org>")
+
 (source (github lindig/lua-ml))
 (license "BSD-2-Clause")
 
