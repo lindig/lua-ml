@@ -518,7 +518,7 @@ let setfallback g fbname fb =
     let register_global g k v =
   match getglobal g k with
   | V.LuaValueBase.Nil -> setglobal g k v
-  | _ -> Printf.kprintf failwith "Global variable '%s' is already set" (V.to_string k)
+  | _ -> Printf.ksprintf failwith "Global variable '%s' is already set" (V.to_string k)
 
 let register_globals l g = List.iter (fun (k, v) -> register_global g (V.LuaValueBase.String k) v) l
 
@@ -533,7 +533,7 @@ let register_module tabname members g =
   let bind (k, v) = match V.Table.find t ~key:(V.LuaValueBase.String k) with
   | V.LuaValueBase.Nil -> V.Table.bind t ~key:(V.LuaValueBase.String k) ~data:v
   | _ ->
-      Printf.kprintf failwith "Duplicate '%s' registered in module '%s'" k tabname in
+      Printf.ksprintf failwith "Duplicate '%s' registered in module '%s'" k tabname in
   List.iter bind members
 
       
