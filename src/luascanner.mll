@@ -1,5 +1,5 @@
 {
-    module P = Luaparser     (* tokens are defined here *)
+    module P = Luaparser_tokens     (* tokens are defined here *)
     
     exception Scan of string
     

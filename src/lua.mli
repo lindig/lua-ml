@@ -103,11 +103,10 @@ module type USERDATA = sig
 end
 module type AST = Luaast.S
 module Parser : sig
-  type token = Luaparser.token
   module type S =
     sig
       type chunk
-      val chunks : (Lexing.lexbuf  -> token) -> Lexing.lexbuf -> chunk list
+      val chunks : (Lexing.lexbuf  -> Luaparser_tokens.token) -> Lexing.lexbuf -> chunk list
     end
   module type MAKER = functor (Ast : AST) -> S with type chunk = Ast.chunk
   module MakeStandard : MAKER

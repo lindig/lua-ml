@@ -2,6 +2,7 @@
 (name lua-ml)
 (version 0.9.4)
 (generate_opam_files true)
+(using menhir 2.0)
 
 (maintainers "Daniil Baturin <daniil+opam@baturin.org>")
 
@@ -17,4 +18,4 @@
   (name lua-ml)
   (synopsis "An embeddable Lua 2.5 interpreter implemented in OCaml")
   (depends
-    (ocaml (>= "4.07.0"))))
+    (ocaml (>= "4.07.0")) menhir))
