@@ -1,6 +1,6 @@
 (lang dune 2.9)
 (name lua-ml)
-(version 0.9.4)
+(version 0.9.5)
 (generate_opam_files true)
 (using menhir 2.0)
 
