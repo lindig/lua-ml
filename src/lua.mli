@@ -328,5 +328,5 @@ module type INTERP = sig
   val mk        : unit -> state
 end
 module MakeInterp (MakeParser : Parser.MAKER) (I : EVALUATOR)
-    : INTERP with module Value = I.Value
+    : INTERP with module Value = I.Value and module Ast = I.Ast
 module Run (I : INTERP) : sig end  (* runs interpreter on Sys.argv *)
