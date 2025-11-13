@@ -26,11 +26,12 @@ module type S = sig
        creating t if needed *)
 end
 
-module Make  (T : Luavalue.USERDATA)
-             (L : Lualib.USERCODE with type 'a userdata' = 'a T.t) :
-    S with type 'a Value.userdata'  = 'a T.t = struct
-  module Value = Luavalue.Make(T)
-  module Ast   = Luaast.Make (Value)
+module MakeFromAST
+             (A : Luaast.S)
+             (L : Lualib.USERCODE with type 'a userdata' = 'a A.Value.userdata') :
+    S with module Value = A.Value and module Ast = A = struct
+  module Value = A.Value
+  module Ast   = A
   module I = struct
     type state = Value.state
     type value = Value.value
@@ -582,4 +583,12 @@ let register_module tabname members g =
       g, V.initcode g
     end
 
-end (* Make *)
+end (* MakeFromAST *)
+
+module Make  (T : Luavalue.USERDATA)
+             (L : Lualib.USERCODE with type 'a userdata' = 'a T.t) :
+    S with type 'a Value.userdata'  = 'a T.t = struct
+  module V = Luavalue.Make(T)
+  module A   = Luaast.Make (V)
+  include MakeFromAST (A) (L)
+end
