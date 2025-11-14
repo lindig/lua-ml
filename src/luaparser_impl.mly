@@ -16,7 +16,7 @@ chunklist : /* empty */        { [] }
           | chunklist DEBUG_PRAGMA { Ast.Debug ($2 <> 0) :: $1 }
 	  ;
 
-function_     : FUNCTION funcname body  { $2 $3 (Parsing.symbol_start()) };
+function_     : FUNCTION funcname body  { $2 $3 ($symbolstartofs) };
 
 funcname  : var             { fun (args, ss) w -> Ast.Fundef (w, $1, args, ss) }
 	  | varexp COLON NAME { fun (args, ss) w -> Ast.Methdef (w, $1, $3, args, ss) }
@@ -30,7 +30,7 @@ statlist : /* empty */         { [] }
 
 sc	 : /* empty */ { () } | SEMI { () } ;
 
-stat   : stat_ { Ast.Stmt' (Parsing.symbol_start (), $1) }
+stat   : stat_ { Ast.Stmt' ($symbolstartofs, $1) }
 stat_  : IF expr1 THEN block elsepart END { let (a, e) = $5 in Ast.If ($2, $4, a, e) }
   /*
        | CASE expr1 OF case_body END
