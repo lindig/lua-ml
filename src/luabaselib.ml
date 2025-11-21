@@ -13,7 +13,7 @@ let do_lexbuf ~sourcename:filename g buf =
     | [] -> [I.Value.LuaValueBase.String "executed without errors"]
     | answers -> answers
   with
-  | Parsing.Parse_error ->
+  | Parser.Error ->
     let file, line, _ = Luasrcmap.last map in
     let errmsg = Printf.sprintf "%s: Syntax error on line %d" file line in
     failwith errmsg
