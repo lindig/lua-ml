@@ -1,0 +1,154 @@
+% https://github.com/8l/cmm/blob/e6365afe66f1a415608fdcbbf40f183d974ad3bb/config/macros.tex
+%
+% Macros we use over and over again.
+%
+
+\ifx\PAL\undefined
+    \def\PAL{C-{}-}
+    \newcommand\module[1]{\texttt{#1.nw}} 
+
+    \let\C\PAL 
+    \let\pal\PAL               
+                            
+    \def\mips{{\small MIPS}}
+    \def\sled{{\small SLED}}
+    \def\sparc{{\small SPARC}}
+    \def\burg{{\small BURG}}
+    \def\asdl{{\small ASDL}}   
+    \def\qcc{{\small QC-{}-}}   
+    \def\noweb{{\small NOWEB}}
+    \def\ocaml{{\small OCAML}}
+    \def\rtl{{\small RTL}}    
+    \def\ir{{\small IR}}      
+    \def\AST{{\small AST}}   
+    \def\cfg{{\small CFG}}  
+    \def\sp{\textit{sp}}
+    \def\vfp{\relax\ifmmode\mathit{VFP}\else {\small VFP}\fi}
+    \def\sp{\relax\ifmmode\mathit{SP}\else {\small SP}\fi}
+    \def\gets{\mathrel{:=}}
+    \def\remark#1{\marginpar{\raggedright\hbadness=10000
+            \def\baselinestretch{0.8}\scriptsize
+            \it #1\par}}
+
+    \def\interface#1{\section{Interface: #1}}
+    \def\implementation#1{\section{Implementation: #1}}
+    \newenvironment{cl}{\begin{quote}\it}{\end{quote}}
+\fi
+
+
+% l2h substitution mips MIPS
+% l2h substitution sled SLED
+% l2h substitution burg BURG
+% l2h substitution sparc SPARC
+% l2h substitution cfg CFG
+% l2h substitution dots ...
+% l2h substitution AST AST
+% l2h substitution ast AST
+% l2h substitution rtl RTL
+% l2h substitution RTL RTL
+% l2h substitution ir IR
+% l2h substitution noweb NOWEB
+% l2h substitution qcc QC--
+% l2h substitution C C--
+% l2h substitution PAL C--
+% l2h substitution pal C--
+% l2h substitution asdl ASDL
+% l2h substitution ocaml OCaml
+% l2h substitution forall forall
+% l2h macro module 1 <a href="#$1.html"><tt>#1.nw</tt></a>
+% l2h substitution gets <-
+% l2h substitution mapsto :->
+% l2h substitution prec @<<<
+% l2h substitution sum sum
+% l2h substitution to ->
+% l2h substitution sp sp
+
+% l2h ignore RequirePackage {
+% l2h ignore newtoks {
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% support for noweb boxes
+
+\makeatletter
+% nwboxes --- support for boxed types in ML codes
+
+%% \ProvidesPackage{nwboxes}
+\RequirePackage{noweb}
+
+\let\nwboxes@ostartdef=\nwstartdeflinemarkup
+\let\nwboxes@oenddef=\nwenddeflinemarkup
+
+\newtoks\@nwtyboxes
+\newif\if@nwboxespending
+\@nwboxespendingfalse
+
+\newcommand\@nwboxesnospecials{\@makeother\'\@makeother\_\@makeother\$\obeyspaces}
+
+\newcommand\nwaddbox{%
+  \begingroup\@nwboxesnospecials\@nwaddbox
+}
+\newcommand\@nwaddbox[1]{%
+  \global\@nwboxespendingtrue
+  \global\@nwtyboxes=\expandafter{\the\@nwtyboxes#1\\}%
+  \endgroup
+  \ignorespaces
+}
+
+% l2h ignore @nwdeeperboxspace =
+% l2h ignore @nwtyboxes =
+
+
+
+\newdimen\@nwdeeperboxspace
+\newcommand\deeperbox[1]
+  {\@nwdeeperboxspace=#1\relax\advance\@nwdeeperboxspace by 5.5pt}
+\global\@nwdeeperboxspace=0pt
+
+%% original -- boxes to left of markup
+
+\def\nwstartdeflinemarkup{\nwboxes@ostartdef
+  \if@nwboxespending
+    {\nw@boxfontsize
+     \penalty500\hskip -1em\mbox{}\nobreak\hfill\nobreak
+     \@nwboxesnospecials\nobreak
+     \setlength\fboxsep{1pt}%
+     \smash{\fbox{\begin{tabular}[t]{@{\,}l@{\,}}\the\@nwtyboxes\end{tabular}}}}%
+     \nobreak\vrule width0pt height10.5pt depth\@nwdeeperboxspace
+     \@nwdeeperboxspace=0pt
+  \fi
+  \global\@nwboxespendingfalse
+  \global\@nwtyboxes={}%
+}
+\def\nwenddeflinemarkup{\nobreak\hskip \nwdefspace minus \nwdefspace\nobreak}
+\def\nw@boxfontsize{\small}
+\def\nwboxfontsize#1{\def\nw@boxfontsize{#1}}
+
+%% new: boxes below markup
+
+\let\nwstartdeflinemarkup=\nwboxes@ostartdef
+\def\nwenddeflinemarkup{%
+  \nobreak
+  \if@nwboxespending
+    {\small
+     \@nwboxesnospecials\nobreak
+     \setlength\fboxsep{1pt}%
+     \smash{\llap{%
+       \begin{tabular}[t]{@{}l@{}}\mbox{}\\
+        \fbox{\begin{tabular}[t]{@{\,}l@{\,}}\the\@nwtyboxes\end{tabular}}%
+       \end{tabular}}}}%
+%\showthe\@nwdeeperboxspace
+     \nobreak\vrule width0pt height8.5pt depth \@nwdeeperboxspace
+     \nobreak
+  \fi
+  \hskip\nwdefspace\nobreak
+  \global\@nwboxespendingfalse
+  \global\@nwdeeperboxspace=0pt
+  \global\@nwtyboxes={}%
+}
+
+\makeatother
+
+%       end support for noweb boxes
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
