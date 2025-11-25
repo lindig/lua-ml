@@ -29,3 +29,13 @@ end
 module Make (T : Luavalue.USERDATA)
             (L : Lualib.USERCODE with type 'a userdata' = 'a T.t) :
     S with type 'a Value.userdata'  = 'a T.t
+
+(** [MakeFromAST (A) (L)] makes an interpreter module from the AST
+    module [A] and the usercode module (L).
+
+    Preferable to {!Make} when you have multiple interpreters and want
+    to share the ASTs and values between them. *)
+module MakeFromAST
+        (A : Luaast.S)
+        (L : Lualib.USERCODE with type 'a userdata' = 'a A.Value.userdata') :
+    S with module Value = A.Value and module Ast = A

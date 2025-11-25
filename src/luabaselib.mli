@@ -5,4 +5,4 @@ module Add (MakeParser : Luaparser.MAKER) (I : Luainterp.S) : sig
   val dostring  : ?file:string -> state -> string -> value list
   val dofile    : state -> string -> value list
   val mk        : unit -> state  (* builds state and runs startup code *)
-end with module Value = I.Value
+end with module Value = I.Value and module Ast = I.Ast
