@@ -358,7 +358,7 @@ let table = { embed = (fun x -> Table x)
 let projectRecord ty v = match v with
 | Table t ->
     let rec addpairs (k, v) =
-      (string.project v, ty.project v) ::
+      (string.project k, ty.project v) ::
       try addpairs (Table.next t k) with Not_found -> [] in
     (try addpairs (Table.first t) with Not_found -> [])
 | _ -> raise (Projection (v, "table (as record)"))
